@@ -1,0 +1,6 @@
+{
+  "name": "Amar Metro - আমার মেট্রো",
+  "description": "ঢাকা মেট্রো রেলের সম্পূর্ণ গাইড, লাইভ ভাড়া ক্যালকুলেটর, সময়সূচী, রুট ম্যাপ এবং আধুনিক ট্রানজিট ব্লগ ও প্রকাশনা প্ল্যাটফর্ম। amarmetro.com",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
