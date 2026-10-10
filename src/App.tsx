@@ -35,7 +35,7 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [selectedStationId, setSelectedStationId] = useState<string>('motijheel');
 
-  // Check URL pathname or query for hidden dedicated admin path: e.g. /backend/login, /backend, /admin, ?admin=true, #/backend/login
+  // Check URL pathname, hash, or query for admin path (e.g. /backend/login, #login, #admin, ?admin=true)
   useEffect(() => {
     const checkAdminPath = () => {
       const path = (window.location.pathname || '').toLowerCase();
@@ -48,10 +48,13 @@ export default function App() {
         path === '/admin' ||
         path === '/backend/' ||
         path.startsWith('/backend') ||
+        path.startsWith('/admin') ||
         hash.includes('backend') ||
         hash.includes('admin') ||
-        search.includes('backend=login') ||
-        search.includes('admin=true')
+        hash.includes('login') ||
+        search.includes('backend') ||
+        search.includes('admin') ||
+        search.includes('login')
       ) {
         setIsAdminOpen(true);
       }
@@ -64,6 +67,18 @@ export default function App() {
       window.removeEventListener('popstate', checkAdminPath);
       window.removeEventListener('hashchange', checkAdminPath);
     };
+  }, []);
+
+  // Global secret keyboard shortcut: Ctrl+Shift+A or Ctrl+Shift+L to toggle Admin Panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.shiftKey || e.altKey) && (e.key === 'a' || e.key === 'A' || e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        setIsAdminOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleCloseAdmin = () => {
@@ -399,10 +414,11 @@ export default function App() {
         lang={lang}
       />
 
-      {/* Footer (Public - No Helpline or Admin Button) */}
+      {/* Footer (Public with discreet Admin link) */}
       <Footer
         lang={lang}
         onNavigate={setCurrentTab}
+        onOpenAdmin={() => setIsAdminOpen(true)}
       />
     </div>
   );

@@ -1,12 +1,13 @@
 import React from 'react';
-import { Train, Globe, MapPin, Bus, Building2 } from 'lucide-react';
+import { Train, Globe, MapPin, Bus, Building2, Lock } from 'lucide-react';
 
 interface FooterProps {
   lang: 'bn' | 'en';
   onNavigate: (tab: string) => void;
+  onOpenAdmin?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ lang, onNavigate }) => {
+export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin }) => {
   return (
     <footer className="bg-slate-900 text-slate-400 mt-16 border-t border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -109,9 +110,22 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate }) => {
 
         <div className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>© {new Date().getFullYear()} amarmetro.com. {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}</p>
-          <p className="flex items-center gap-1">
-            <span>{lang === 'bn' ? 'ঢাকার সম্মানিত যাত্রী ও নাগরিকদের জন্য নিবেদিত' : 'Crafted for Dhaka transit commuters'}</span>
-          </p>
+          <div className="flex items-center gap-4 flex-wrap justify-center">
+            <p className="flex items-center gap-1">
+              <span>{lang === 'bn' ? 'ঢাকার সম্মানিত যাত্রী ও নাগরিকদের জন্য নিবেদিত' : 'Crafted for Dhaka transit commuters'}</span>
+            </p>
+            {onOpenAdmin && (
+              <button
+                type="button"
+                onClick={onOpenAdmin}
+                className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer bg-slate-800/60 hover:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700/60"
+                title={lang === 'bn' ? 'অ্যাডমিন কন্ট্রোল ও ব্লগ প্রকাশনা' : 'Admin Publishing Portal'}
+              >
+                <Lock className="w-3 h-3 text-emerald-400" />
+                <span className="font-medium">{lang === 'bn' ? 'এডমিন লগইন' : 'Admin Login'}</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </footer>
