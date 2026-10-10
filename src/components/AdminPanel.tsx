@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BlogPost, PostFormData } from '../types/blog.ts';
 import { METRO_CATEGORIES, PRESET_IMAGE_OPTIONS } from '../data/metroData.ts';
 import {
@@ -31,6 +31,9 @@ import {
   Copy,
   Check,
   Download,
+  Megaphone,
+  DollarSign,
+  ExternalLink,
 } from 'lucide-react';
 import {
   verifyAdminPassword,
@@ -42,6 +45,8 @@ import {
   getCustomSecretSlug,
   setCustomSecretSlug,
 } from '../utils/security.ts';
+import { AdConfig, DEFAULT_AD_CONFIG } from '../types/ad.ts';
+import { getAdConfig, saveAdConfig } from '../utils/ads.ts';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -77,9 +82,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [customSlug, setCustomSlug] = useState(() => getCustomSecretSlug());
   const [slugSavedMsg, setSlugSavedMsg] = useState('');
 
-  // Admin tabs: 'create' | 'manage' | 'security' | 'guide'
-  const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'security' | 'guide'>('create');
+  // Admin tabs: 'create' | 'manage' | 'ads' | 'security' | 'guide'
+  const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'ads' | 'security' | 'guide'>('create');
   const [contentTab, setContentTab] = useState<'write' | 'preview'>('write');
+
+  // Ads & AdSense Management State
+  const [adConfig, setAdConfig] = useState<AdConfig>(DEFAULT_AD_CONFIG);
+  const [adSubTab, setAdSubTab] = useState<'adsense' | 'leaderboard' | 'inArticle' | 'guide'>('adsense');
+  const [isSavingAds, setIsSavingAds] = useState(false);
+  const [adSaveMsg, setAdSaveMsg] = useState('');
+  const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
 
   // New Post Form State (Author strictly set to Admin)
   const [formData, setFormData] = useState<PostFormData>({
@@ -107,6 +119,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Load Ads Config when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      getAdConfig().then((cfg) => {
+        setAdConfig(cfg);
+      });
+    }
+  }, [isOpen]);
 
   // High-performance image processor: compresses large mobile photos & uploads (backend API with local data URL fallback)
   const compressAndProcessImage = (file: File): Promise<string> => {
@@ -287,8 +308,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     await onRefreshPosts();
   };
 
-  if (!isOpen) return null;
-
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
@@ -371,6 +390,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     downloadAnchor.click();
     downloadAnchor.remove();
     showNotification('success', lang === 'bn' ? 'posts.json ফাইল ডাউনলোড হয়েছে! এটি গিটহাবে data/posts.json এ রিপ্লেস করতে পারেন।' : 'posts.json downloaded successfully!');
+  };
+
+  const handleSaveAds = async () => {
+    setIsSavingAds(true);
+    setAdSaveMsg('');
+    try {
+      await saveAdConfig(adConfig);
+      setAdSaveMsg(lang === 'bn' ? 'বিজ্ঞাপন সেটিংস সফলভাবে সংরক্ষিত ও লাইভ আপডেট হয়েছে!' : 'Ad settings saved & updated successfully!');
+      showNotification('success', lang === 'bn' ? 'বিজ্ঞাপন সেটিংস সফলভাবে সংরক্ষিত হয়েছে!' : 'Ad settings saved!');
+      setTimeout(() => setAdSaveMsg(''), 4500);
+    } catch (e: any) {
+      showNotification('error', lang === 'bn' ? 'বিজ্ঞাপন সংরক্ষণে ব্যর্থ হয়েছে' : 'Failed to save ad settings');
+    } finally {
+      setIsSavingAds(false);
+    }
+  };
+
+  const handleUploadAdImage = async (slotKey: 'leaderboard' | 'inArticle', file: File) => {
+    setIsUploadingAdImage(true);
+    try {
+      const url = await compressAndProcessImage(file);
+      if (url) {
+        setAdConfig((prev) => ({
+          ...prev,
+          [slotKey]: {
+            ...prev[slotKey],
+            imageUrl: url,
+          },
+        }));
+        showNotification('success', lang === 'bn' ? 'ব্যানার ছবি সফলভাবে আপলোড ও যুক্ত হয়েছে' : 'Banner image uploaded');
+      }
+    } catch (e) {
+      showNotification('error', lang === 'bn' ? 'ছবি আপলোডে সমস্যা হয়েছে' : 'Image upload failed');
+    } finally {
+      setIsUploadingAdImage(false);
+    }
+  };
+
+  const handleDownloadAdsJson = () => {
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(adConfig, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', 'ads.json');
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showNotification('success', lang === 'bn' ? 'ads.json ফাইল ডাউনলোড হয়েছে! গিটহাবে data/ads.json ফাইলে এটি সেভ করতে পারেন।' : 'ads.json downloaded successfully!');
   };
 
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -582,6 +648,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     await onRefreshPosts();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
@@ -944,6 +1012,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     <ListFilter className="w-4 h-4" />
                     <span>{lang === 'bn' ? `পোস্ট ব্যবস্থাপনা (${posts.length})` : `Manage Posts (${posts.length})`}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminTab('ads')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
+                      adminTab === 'ads'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Megaphone className="w-4 h-4" />
+                    <span>{lang === 'bn' ? 'বিজ্ঞাপন ও অ্যাডসেন্স' : 'Ads & AdSense'}</span>
                   </button>
 
                   <button
@@ -1559,6 +1639,875 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 : (lang === 'bn' ? 'নতুন ছবি সংরক্ষণ করুন' : 'Save New Image')}
                             </span>
                           </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: Ads & Google AdSense Management */}
+              {adminTab === 'ads' && (
+                <div className="space-y-6">
+                  {/* Ads Header Banner */}
+                  <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white p-6 rounded-2xl shadow-sm border border-slate-800">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs">
+                          <Megaphone className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-lg font-bold text-white">
+                              {lang === 'bn' ? 'বিজ্ঞাপন ও গুগল অ্যাডসেন্স ব্যবস্থাপনা' : 'Ads & Google AdSense Manager'}
+                            </h4>
+                            <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-sm">
+                              {adConfig.googleAdSense.publisherId ? 'AdSense Configured' : 'Custom / Ready'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-0.5">
+                            {lang === 'bn'
+                              ? 'হোমপেজ ও প্রতিটি আর্টিকেল পেজে গুগল অ্যাডসেন্স বা যেকোনো ক্লায়েন্টের কাস্টম ব্যানার বিজ্ঞাপন যুক্ত করুন।'
+                              : 'Manage Google AdSense units or display custom sponsored advertiser banners.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleDownloadAdsJson}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+                          title="গিটহাবে data/ads.json ফাইল প্রতিস্থাপন করতে ডাউনলোড করুন"
+                        >
+                          <Download className="w-3.5 h-3.5 text-blue-400" />
+                          <span>{lang === 'bn' ? '📥 ads.json ডাউনলোড' : 'Download ads.json'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveAds}
+                          disabled={isSavingAds}
+                          className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-all active:scale-98"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>{isSavingAds ? (lang === 'bn' ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') : (lang === 'bn' ? 'পরিবর্তন সংরক্ষণ করুন' : 'Save Changes')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Save Status Notification */}
+                  {adSaveMsg && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-semibold animate-fadeIn">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-emerald-600" />
+                        <span>{adSaveMsg}</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 font-normal">সাইটে অবিলম্বে পরিবর্তন দৃশ্যমান</span>
+                    </div>
+                  )}
+
+                  {/* Ads Sub-Navigation Tabs */}
+                  <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+                    <button
+                      type="button"
+                      onClick={() => setAdSubTab('adsense')}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        adSubTab === 'adsense'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{lang === 'bn' ? '১. গুগল অ্যাডসেন্স সেটিংস' : '1. Google AdSense'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdSubTab('leaderboard')}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        adSubTab === 'leaderboard'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5 text-blue-400" />
+                      <span>{lang === 'bn' ? '২. হোমপেজ লিডারবোর্ড ব্যানার' : '2. Leaderboard Banner'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdSubTab('inArticle')}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        adSubTab === 'inArticle'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{lang === 'bn' ? '৩. আর্টিকেল ভিতরের ব্যানার' : '3. In-Article Ad'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdSubTab('guide')}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        adSubTab === 'guide'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <HelpCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{lang === 'bn' ? '৪. অ্যাডসেন্স ও কাস্টম এড নির্দেশিকা' : '4. How-To Guide'}</span>
+                    </button>
+                  </div>
+
+                  {/* Sub-Tab 1: Google AdSense Global Settings */}
+                  {adSubTab === 'adsense' && (
+                    <div className="space-y-6">
+                      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div>
+                            <h5 className="font-bold text-slate-900 text-sm">
+                              {lang === 'bn' ? 'গুগল অ্যাডসেন্স মূল অ্যাকাউন্ট তথ্য (AdSense Account Setup)' : 'Google AdSense Account Credentials'}
+                            </h5>
+                            <p className="text-xs text-slate-500">
+                              গুগল অ্যাডসেন্স অ্যাকাউন্ট থেকে প্রাপ্ত আপনার পাবলিশার আইডি (Publisher ID) নিচে প্রবেশ করান।
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 block mb-1">
+                              {lang === 'bn' ? 'পাবলিশার আইডি (Publisher ID) *' : 'Publisher ID (ca-pub-...) *'}
+                            </label>
+                            <input
+                              type="text"
+                              value={adConfig.googleAdSense.publisherId}
+                              onChange={(e) =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  googleAdSense: {
+                                    ...adConfig.googleAdSense,
+                                    publisherId: e.target.value.trim(),
+                                  },
+                                })
+                              }
+                              placeholder="ca-pub-1234567890123456"
+                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              উদাহরণ: <code className="text-slate-600">ca-pub-9876543210987654</code> (গুগল অ্যাডসেন্স ড্যাশবোর্ড থেকে কপি করুন)
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 block mb-1">
+                              {lang === 'bn' ? 'অটো বিজ্ঞাপন (Auto Ads)' : 'Auto Ads'}
+                            </label>
+                            <div className="flex items-center gap-3 pt-2">
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={adConfig.googleAdSense.autoAdsEnabled}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      googleAdSense: {
+                                        ...adConfig.googleAdSense,
+                                        autoAdsEnabled: e.target.checked,
+                                      },
+                                    })
+                                  }
+                                  className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                              </label>
+                              <span className="text-xs text-slate-600 font-medium">
+                                {adConfig.googleAdSense.autoAdsEnabled
+                                  ? (lang === 'bn' ? 'সক্রিয় (Auto Ads On)' : 'Enabled')
+                                  : (lang === 'bn' ? 'নিষ্ক্রিয় (Manual Slots Only)' : 'Disabled')}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1.5">
+                              গুগল অটো এডস অন করলে গুগল নিজে থেকেই উপযুক্ত জায়গায় বিজ্ঞাপন দেখাবে।
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* AdSense HTML Head Script Helper */}
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{lang === 'bn' ? 'অ্যাডসেন্স স্ক্রিপ্ট ট্যাগ (index.html)' : 'AdSense Script Tag'}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const script = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adConfig.googleAdSense.publisherId || 'ca-pub-XXXXXXXXXXXXXXXX'}" crossorigin="anonymous"></script>`;
+                                navigator.clipboard.writeText(script);
+                                showNotification('success', lang === 'bn' ? 'স্ক্রিপ্ট কপি হয়েছে!' : 'Script copied!');
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold rounded-lg shadow-2xs cursor-pointer"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>{lang === 'bn' ? 'কোড কপি করুন' : 'Copy Code'}</span>
+                            </button>
+                          </div>
+                          <div className="p-3 bg-slate-900 rounded-lg text-[11px] font-mono text-emerald-400 overflow-x-auto select-all">
+                            {`<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adConfig.googleAdSense.publisherId || 'ca-pub-XXXXXXXXXXXXXXXX'}" crossorigin="anonymous"></script>`}
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            💡 <strong>সুবিধা:</strong> আপনি উপরে Publisher ID লিখে "পরিবর্তন সংরক্ষণ করুন" চাপলে এই স্ক্রিপ্টটি সাইটে স্বয়ংক্রিয়ভাবে চালু হয়ে যাবে! আলাদাভাবে কোড এডিট করতে হবে না।
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 2: Leaderboard Slot */}
+                  {adSubTab === 'leaderboard' && (
+                    <div className="space-y-6">
+                      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div>
+                            <h5 className="font-bold text-slate-900 text-sm">
+                              {lang === 'bn' ? 'হোমপেজ প্রধান ব্যানার (Leaderboard Slot - 728x90 / Responsive)' : 'Homepage Leaderboard Slot'}
+                            </h5>
+                            <p className="text-xs text-slate-500">
+                              হোমপেজের হিরো সেকশনের ঠিক নিচে এই বিজ্ঞাপনটি প্রদর্শিত হয়।
+                            </p>
+                          </div>
+
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <span className="text-xs font-bold text-slate-600">
+                              {adConfig.leaderboard.enabled ? (lang === 'bn' ? 'চালু' : 'Active') : (lang === 'bn' ? 'বন্ধ' : 'Off')}
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={adConfig.leaderboard.enabled}
+                              onChange={(e) =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  leaderboard: { ...adConfig.leaderboard, enabled: e.target.checked },
+                                })
+                              }
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
+                          </label>
+                        </div>
+
+                        {/* Format Switcher */}
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-2">
+                            {lang === 'bn' ? 'বিজ্ঞাপনের ধরন নির্বাচন করুন:' : 'Choose Ad Type:'}
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  leaderboard: { ...adConfig.leaderboard, type: 'google-adsense' },
+                                })
+                              }
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                adConfig.leaderboard.type === 'google-adsense'
+                                  ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                                <DollarSign className="w-3.5 h-3.5 text-emerald-700" />
+                                <span>গুগল অ্যাডসেন্স (AdSense)</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">গুগল থেকে স্বয়ংক্রিয় বিজ্ঞাপন</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  leaderboard: { ...adConfig.leaderboard, type: 'custom' },
+                                })
+                              }
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                adConfig.leaderboard.type === 'custom'
+                                  ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                                <Megaphone className="w-3.5 h-3.5 text-blue-700" />
+                                <span>কাস্টম স্পনসর ব্যানার</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">ক্লায়েন্টের ব্যানার ছবি ও নিজস্ব লিংক</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  leaderboard: { ...adConfig.leaderboard, type: 'default' },
+                                })
+                              }
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                adConfig.leaderboard.type === 'default'
+                                  ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                <span>ডিফল্ট মেট্রো ব্যানার</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">আমারমেট্রো প্রস্তুতকৃত প্রমোশন</p>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* When Google AdSense is Selected */}
+                        {adConfig.leaderboard.type === 'google-adsense' && (
+                          <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3">
+                            <h6 className="text-xs font-bold text-slate-800">
+                              {lang === 'bn' ? 'লিডারবোর্ড স্লট আইডি (Leaderboard Ad Slot ID):' : 'Ad Slot ID:'}
+                            </h6>
+                            <input
+                              type="text"
+                              value={adConfig.leaderboard.adSlot || ''}
+                              onChange={(e) =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  leaderboard: { ...adConfig.leaderboard, adSlot: e.target.value.trim() },
+                                })
+                              }
+                              placeholder="1234567890"
+                              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              গুগল অ্যাডসেন্স ড্যাশবোর্ডে <strong>Ads ➔ By ad unit ➔ Display ads</strong> তৈরি করে প্রাপ্ত ১০ ডিজিটের <strong>data-ad-slot</strong> নম্বরটি এখানে দিন।
+                            </p>
+                          </div>
+                        )}
+
+                        {/* When Custom Sponsor is Selected */}
+                        {adConfig.leaderboard.type === 'custom' && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                            <h6 className="text-xs font-bold text-slate-800">
+                              {lang === 'bn' ? 'কাস্টম বিজ্ঞাপন বিবরণ ও কনফিগারেশন:' : 'Custom Ad Details:'}
+                            </h6>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'বিজ্ঞাপনের শিরোনাম (Headline) *' : 'Ad Title *'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.leaderboard.title || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      leaderboard: { ...adConfig.leaderboard, title: e.target.value },
+                                    })
+                                  }
+                                  placeholder="বিকাশ বা নগদ ট্রানজিট অফার"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'ব্যাজ বা ক্যাটাগরি (Badge)' : 'Badge Label'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.leaderboard.badge || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      leaderboard: { ...adConfig.leaderboard, badge: e.target.value },
+                                    })
+                                  }
+                                  placeholder="স্পনসরড ট্রানজিট সার্ভিস"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-700 block mb-1">
+                                {lang === 'bn' ? 'বিজ্ঞাপনের বর্ণনা (Description)' : 'Ad Description'}
+                              </label>
+                              <input
+                                type="text"
+                                value={adConfig.leaderboard.description || ''}
+                                onChange={(e) =>
+                                  setAdConfig({
+                                    ...adConfig,
+                                    leaderboard: { ...adConfig.leaderboard, description: e.target.value },
+                                  })
+                                }
+                                placeholder="মেট্রোরেল যাত্রীদের জন্য দ্রুততম মোবাইল রিচার্জ ও ক্যাশব্যাক সুবিধা।"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'ক্লিক লিংক / টার্গেট URL (Website Link) *' : 'Target URL *'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.leaderboard.targetUrl || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      leaderboard: { ...adConfig.leaderboard, targetUrl: e.target.value },
+                                    })
+                                  }
+                                  placeholder="https://sponsor-website.com"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'বাটন লেখা (CTA Button Text)' : 'Button Text'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.leaderboard.ctaText || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      leaderboard: { ...adConfig.leaderboard, ctaText: e.target.value },
+                                    })
+                                  }
+                                  placeholder="বিস্তারিত জানুন"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Banner Image for Leaderboard */}
+                            <div className="space-y-2 pt-2 border-t border-slate-200">
+                              <label className="text-xs font-bold text-slate-700 block">
+                                {lang === 'bn' ? 'ব্যানার ছবি (Banner Image):' : 'Banner Image:'}
+                              </label>
+
+                              <div className="flex flex-col sm:flex-row items-center gap-3">
+                                {adConfig.leaderboard.imageUrl ? (
+                                  <img
+                                    src={adConfig.leaderboard.imageUrl}
+                                    alt="Preview"
+                                    className="w-32 h-16 object-cover rounded-xl border border-slate-300 shadow-2xs shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-32 h-16 rounded-xl bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-400 text-xs shrink-0">
+                                    নো ছবি
+                                  </div>
+                                )}
+
+                                <div className="flex-1 w-full space-y-2">
+                                  <label className="flex items-center justify-center gap-2 px-3 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-semibold cursor-pointer shadow-2xs">
+                                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>{isUploadingAdImage ? 'আপলোড হচ্ছে...' : 'কম্পিউটার/মোবাইল থেকে ছবি আপলোড করুন'}</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={isUploadingAdImage}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadAdImage('leaderboard', file);
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={adConfig.leaderboard.imageUrl || ''}
+                                    onChange={(e) =>
+                                      setAdConfig({
+                                        ...adConfig,
+                                        leaderboard: { ...adConfig.leaderboard, imageUrl: e.target.value },
+                                      })
+                                    }
+                                    placeholder="অথবা সরাসরি ছবির ওয়েব লিঙ্ক দিন (https://...)"
+                                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 3: In-Article Slot */}
+                  {adSubTab === 'inArticle' && (
+                    <div className="space-y-6">
+                      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div>
+                            <h5 className="font-bold text-slate-900 text-sm">
+                              {lang === 'bn' ? 'আর্টিকেল ভিতরের ব্যানার (In-Article Ad Slot)' : 'In-Article Ad Slot'}
+                            </h5>
+                            <p className="text-xs text-slate-500">
+                              পাঠকরা ব্লগ বা আর্টিকেল পড়ার মাঝখানে এই বিজ্ঞাপনটি দেখতে পাবেন।
+                            </p>
+                          </div>
+
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <span className="text-xs font-bold text-slate-600">
+                              {adConfig.inArticle.enabled ? (lang === 'bn' ? 'চালু' : 'Active') : (lang === 'bn' ? 'বন্ধ' : 'Off')}
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={adConfig.inArticle.enabled}
+                              onChange={(e) =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  inArticle: { ...adConfig.inArticle, enabled: e.target.checked },
+                                })
+                              }
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
+                          </label>
+                        </div>
+
+                        {/* Format Switcher */}
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-2">
+                            {lang === 'bn' ? 'বিজ্ঞাপনের ধরন নির্বাচন করুন:' : 'Choose Ad Type:'}
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  inArticle: { ...adConfig.inArticle, type: 'google-adsense' },
+                                })
+                              }
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                adConfig.inArticle.type === 'google-adsense'
+                                  ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                                <DollarSign className="w-3.5 h-3.5 text-emerald-700" />
+                                <span>গুগল অ্যাডসেন্স (AdSense)</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">আর্টিকেল অ্যাড ইউনিট</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  inArticle: { ...adConfig.inArticle, type: 'custom' },
+                                })
+                              }
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                adConfig.inArticle.type === 'custom'
+                                  ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                                <Megaphone className="w-3.5 h-3.5 text-blue-700" />
+                                <span>কাস্টম স্পনসর ব্যানার</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">ক্লায়েন্টের ব্যানার ছবি ও লিংক</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  inArticle: { ...adConfig.inArticle, type: 'default' },
+                                })
+                              }
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                adConfig.inArticle.type === 'default'
+                                  ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500'
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                <span>ডিফল্ট মেট্রো ব্যানার</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">স্মার্ট পাস ও রিচার্জ প্রমোশন</p>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* When Google AdSense is Selected */}
+                        {adConfig.inArticle.type === 'google-adsense' && (
+                          <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3">
+                            <h6 className="text-xs font-bold text-slate-800">
+                              {lang === 'bn' ? 'আর্টিকেল স্লট আইডি (In-Article Ad Slot ID):' : 'In-Article Ad Slot ID:'}
+                            </h6>
+                            <input
+                              type="text"
+                              value={adConfig.inArticle.adSlot || ''}
+                              onChange={(e) =>
+                                setAdConfig({
+                                  ...adConfig,
+                                  inArticle: { ...adConfig.inArticle, adSlot: e.target.value.trim() },
+                                })
+                              }
+                              placeholder="0987654321"
+                              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              অ্যাডসেন্স থেকে <strong>In-article ad</strong> ইউনিট তৈরি করে তার Slot ID এখানে দিন।
+                            </p>
+                          </div>
+                        )}
+
+                        {/* When Custom Sponsor is Selected */}
+                        {adConfig.inArticle.type === 'custom' && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                            <h6 className="text-xs font-bold text-slate-800">
+                              {lang === 'bn' ? 'আর্টিকেল বিজ্ঞাপনের তথ্য:' : 'In-Article Ad Details:'}
+                            </h6>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'বিজ্ঞাপনের শিরোনাম (Headline) *' : 'Ad Title *'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.inArticle.title || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      inArticle: { ...adConfig.inArticle, title: e.target.value },
+                                    })
+                                  }
+                                  placeholder="স্মার্ট পাস রিচার্জ বা ট্রাভেল প্যাকেজ"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'ব্যাজ লেখা (Badge)' : 'Badge Label'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.inArticle.badge || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      inArticle: { ...adConfig.inArticle, badge: e.target.value },
+                                    })
+                                  }
+                                  placeholder="স্পনসরড পার্টনার"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-700 block mb-1">
+                                {lang === 'bn' ? 'বিজ্ঞাপনের বর্ণনা (Description)' : 'Ad Description'}
+                              </label>
+                              <input
+                                type="text"
+                                value={adConfig.inArticle.description || ''}
+                                onChange={(e) =>
+                                  setAdConfig({
+                                    ...adConfig,
+                                    inArticle: { ...adConfig.inArticle, description: e.target.value },
+                                  })
+                                }
+                                placeholder="দীর্ঘ লাইনে না দাঁড়িয়ে মুহূর্তেই ডিজিটাল পাস রিচার্জ করুন।"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'টার্গেট লিংক (URL) *' : 'Target URL *'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.inArticle.targetUrl || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      inArticle: { ...adConfig.inArticle, targetUrl: e.target.value },
+                                    })
+                                  }
+                                  placeholder="https://sponsor.com/offer"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 block mb-1">
+                                  {lang === 'bn' ? 'বাটন লেখা (CTA)' : 'Button Text'}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adConfig.inArticle.ctaText || ''}
+                                  onChange={(e) =>
+                                    setAdConfig({
+                                      ...adConfig,
+                                      inArticle: { ...adConfig.inArticle, ctaText: e.target.value },
+                                    })
+                                  }
+                                  placeholder="অফারটি দেখতে ক্লিক করুন"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Banner Image */}
+                            <div className="space-y-2 pt-2 border-t border-slate-200">
+                              <label className="text-xs font-bold text-slate-700 block">
+                                {lang === 'bn' ? 'ব্যানার ছবি (Banner Image):' : 'Banner Image:'}
+                              </label>
+
+                              <div className="flex flex-col sm:flex-row items-center gap-3">
+                                {adConfig.inArticle.imageUrl ? (
+                                  <img
+                                    src={adConfig.inArticle.imageUrl}
+                                    alt="Preview"
+                                    className="w-32 h-20 object-cover rounded-xl border border-slate-300 shadow-2xs shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-32 h-20 rounded-xl bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-400 text-xs shrink-0">
+                                    নো ছবি
+                                  </div>
+                                )}
+
+                                <div className="flex-1 w-full space-y-2">
+                                  <label className="flex items-center justify-center gap-2 px-3 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-semibold cursor-pointer shadow-2xs">
+                                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>{isUploadingAdImage ? 'আপলোড হচ্ছে...' : 'কম্পিউটার/মোবাইল থেকে ছবি আপলোড করুন'}</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={isUploadingAdImage}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadAdImage('inArticle', file);
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={adConfig.inArticle.imageUrl || ''}
+                                    onChange={(e) =>
+                                      setAdConfig({
+                                        ...adConfig,
+                                        inArticle: { ...adConfig.inArticle, imageUrl: e.target.value },
+                                      })
+                                    }
+                                    placeholder="অথবা সরাসরি ছবির ওয়েব লিঙ্ক দিন (https://...)"
+                                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-Tab 4: How-To Guide & Tutorial */}
+                  {adSubTab === 'guide' && (
+                    <div className="space-y-6">
+                      {/* Guide 1: Google AdSense Approval & Setup */}
+                      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                        <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                          <DollarSign className="w-5 h-5 text-emerald-600" />
+                          <h5 className="font-bold text-slate-900 text-sm">
+                            {lang === 'bn' ? 'গুগল অ্যাডসেন্স (Google AdSense) যুক্ত করার সম্পূর্ণ নিয়ম' : 'Complete Google AdSense Setup Guide'}
+                          </h5>
+                        </div>
+
+                        <div className="space-y-3 text-xs text-slate-700 leading-relaxed">
+                          <p>
+                            <strong>ধাপ ১: Google AdSense এ অ্যাকাউন্ট তৈরি ও সাইট সাবমিট</strong><br />
+                            <a href="https://adsense.google.com" target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline font-semibold">adsense.google.com</a> এ প্রবেশ করে আপনার ডোমেইন <strong>amarmetro.com</strong> যোগ করুন (Sites ➔ Add site)।
+                          </p>
+
+                          <p>
+                            <strong>ধাপ ২: Publisher ID সংগ্রহ করুন</strong><br />
+                            AdSense এর Account ➔ Settings ➔ Account information এ গেলে আপনার <strong>Publisher ID</strong> পাবেন (যেমন: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">ca-pub-1234567890123456</code>)। এটি কপি করে আমাদের অ্যাডমিন প্যানেলের <strong>"গুগল অ্যাডসেন্স সেটিংস"</strong> বক্সে বসিয়ে সেভ করুন।
+                          </p>
+
+                          <p>
+                            <strong>ধাপ ৩: অ্যাড স্লট আইডি তৈরি করুন</strong><br />
+                            অ্যাডসেন্স ড্যাশবোর্ডে <strong>Ads ➔ By ad unit</strong> এ গিয়ে Display Ad তৈরি করুন। কোড থেকে <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-800">data-ad-slot="XXXXXXXXXX"</code> এর সংখ্যাটি কপি করে লিডারবোর্ড বা আর্টিকেল স্লটে বসিয়ে দিন।
+                          </p>
+
+                          <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900">
+                            ℹ️ <strong>মনে রাখবেন:</strong> গুগল অ্যাডসেন্স অনুমোদন (Approval) পেতে সাইটে ১০-১৫টি মৌলিক পোস্ট থাকা জরুরি। amarmetro ব্লগে নিয়মিত মেট্রো রুট, টিকিট, সময়সূচী ও পর্যটন সংক্রান্ত পোস্ট প্রকাশ করতে থাকুন।
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Guide 2: Custom Sponsor Ads without AdSense */}
+                      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                        <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                          <Megaphone className="w-5 h-5 text-blue-600" />
+                          <h5 className="font-bold text-slate-900 text-sm">
+                            {lang === 'bn' ? 'কাস্টম বিজ্ঞাপন বা স্পনসর ব্যানার যুক্ত করার নিয়ম (অ্যাডসেন্স ছাড়াও আয়)' : 'Custom Sponsor Banners Guide'}
+                          </h5>
+                        </div>
+
+                        <div className="space-y-3 text-xs text-slate-700 leading-relaxed">
+                          <p>
+                            আপনার যদি এখনো গুগল অ্যাডসেন্স অনুমোদন না থাকে, তবুও আপনি সাইট থেকে সরাসরি আয় করতে পারেন! স্থানীয় প্রতিষ্ঠান (যেমন: বিকাশ রিচার্জ এজেন্ট, ট্রাভেল এজেন্সি, মেট্রোরেল সংলগ্ন হোটেল, রেস্তোরাঁ, কোচিং সেন্টার ইত্যাদি) এর কাছ থেকে বিজ্ঞাপন নিয়ে প্রদর্শিত করতে পারেন:
+                          </p>
+
+                          <ol className="list-decimal ml-5 space-y-1.5 text-slate-600">
+                            <li>উপরে <strong>"হোমপেজ লিডারবোর্ড ব্যানার"</strong> অথবা <strong>"আর্টিকেল ভিতরের ব্যানার"</strong> ট্যাবে যান।</li>
+                            <li>বিজ্ঞাপনের ধরন হিসেবে <strong>"কাস্টম স্পনসর ব্যানার"</strong> নির্বাচন করুন।</li>
+                            <li>স্পনসর বা ক্লায়েন্টের প্রতিষ্ঠানের নাম, বিজ্ঞাপনের কথা এবং তাদের ওয়েবসাইটের লিংক দিন।</li>
+                            <li><strong>"কম্পিউটার/মোবাইল থেকে ছবি আপলোড করুন"</strong> বাটনে ক্লিক করে স্পনসরের ব্যানার বা লোগো নির্বাচন করুন।</li>
+                            <li>উপরে ডানদিকের <strong>"পরিবর্তন সংরক্ষণ করুন"</strong> বাটনে চাপলেই সাইটে তাদের বিজ্ঞাপন চালু হয়ে যাবে!</li>
+                          </ol>
+                        </div>
+                      </div>
+
+                      {/* Guide 3: Code Reference */}
+                      <div className="bg-slate-900 text-slate-100 rounded-2xl p-6 shadow-xs space-y-3 border border-slate-800">
+                        <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                          <Server className="w-5 h-5 text-emerald-400" />
+                          <h5 className="font-bold text-white text-sm">
+                            {lang === 'bn' ? 'কোডে সরাসরি পরিবর্তন করতে চাইলে কোথায় পাবেন?' : 'Source Code Files Reference'}
+                          </h5>
+                        </div>
+
+                        <div className="space-y-2 text-xs text-slate-300">
+                          <p>• <strong>ব্যানার কম্পোনেন্ট:</strong> <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">src/components/AdBanner.tsx</code></p>
+                          <p>• <strong>ডাটাবেজ/কনফিগ ফাইল:</strong> <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">data/ads.json</code></p>
+                          <p>• <strong>হোমপেজে বিজ্ঞাপন স্থান:</strong> <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">src/App.tsx</code> (Hero সেকশনের ঠিক নিচে)</p>
+                          <p>• <strong>আর্টিকেলের ভেতরে বিজ্ঞাপন স্থান:</strong> <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">src/components/ArticleModal.tsx</code></p>
                         </div>
                       </div>
                     </div>

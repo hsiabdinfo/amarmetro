@@ -93,6 +93,42 @@ app.get('/api/posts/:id', (req, res) => {
   res.json({ success: true, post: posts[postIndex] });
 });
 
+const ADS_FILE = path.join(__dirname, 'data', 'ads.json');
+
+// Ads Configuration Endpoints
+app.get('/api/ads', (req, res) => {
+  try {
+    if (fs.existsSync(ADS_FILE)) {
+      const data = fs.readFileSync(ADS_FILE, 'utf-8');
+      return res.json(JSON.parse(data));
+    }
+  } catch (e) {
+    console.error('Error reading ads config:', e);
+  }
+  // Fallback defaults
+  res.json({
+    googleAdSense: { publisherId: '', autoAdsEnabled: false },
+    leaderboard: { enabled: true, type: 'default' },
+    inArticle: { enabled: true, type: 'default' },
+    sidebar: { enabled: true, type: 'default' }
+  });
+});
+
+app.post('/api/ads', (req, res) => {
+  try {
+    const config = req.body;
+    const dir = path.dirname(ADS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(ADS_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    return res.json({ success: true, message: 'বিজ্ঞাপন কনফিগারেশন সংরক্ষিত হয়েছে।' });
+  } catch (err: any) {
+    console.error('Error saving ads config:', err);
+    return res.status(500).json({ success: false, message: 'ত্রুটি: ' + err.message });
+  }
+});
+
 const AUTH_FILE = path.join(__dirname, 'data', 'auth.json');
 
 // Admin verify
