@@ -26,6 +26,7 @@ import {
   Upload,
   Copy,
   Check,
+  Download,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -134,6 +135,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     localStorage.removeItem('amarmetro_admin_auth');
   };
 
+  const handleDownloadPostsJson = () => {
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(posts, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', 'posts.json');
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showNotification('success', lang === 'bn' ? 'posts.json ফাইল ডাউনলোড হয়েছে! এটি গিটহাবে data/posts.json এ রিপ্লেস করতে পারেন।' : 'posts.json downloaded successfully!');
+  };
+
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.content.trim()) {
@@ -142,6 +154,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     setIsSubmitting(true);
+    let serverSaved = false;
+
     try {
       const response = await fetch('/api/posts', {
         method: 'POST',
@@ -161,36 +175,71 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         }),
       });
 
-      const data = await response.json();
-      if (response.ok && data.success) {
-        showNotification(
-          'success',
-          lang === 'bn'
-            ? 'পোস্ট সফলভাবে ব্যাক এন্ডে সংরক্ষিত ও প্রকাশিত হয়েছে!'
-            : 'Post successfully published to backend!'
-        );
-        // Reset form
-        setFormData({
-          title: '',
-          excerpt: '',
-          content: '',
-          category: 'খবর ও আপডেট',
-          coverImage: PRESET_IMAGE_OPTIONS[0].url,
-          tags: 'মেট্রো, ঢাকা, ট্রেন',
-          authorName: 'এডমিন',
-          authorRole: 'amarmetro.com',
-          status: 'published',
-        });
-        await onRefreshPosts();
-        setAdminTab('manage');
-      } else {
-        showNotification('error', data.message || 'Error publishing post');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          serverSaved = true;
+          showNotification(
+            'success',
+            lang === 'bn'
+              ? 'পোস্ট সফলভাবে ব্যাক এন্ডে সংরক্ষিত ও প্রকাশিত হয়েছে!'
+              : 'Post successfully published to backend!'
+          );
+        }
       }
     } catch (err: any) {
-      showNotification('error', err.message || 'Failed to connect to backend server');
-    } finally {
-      setIsSubmitting(false);
+      console.warn('Backend API not available, falling back to static storage:', err);
     }
+
+    if (!serverSaved) {
+      // Fallback for GitHub Pages / static hosting
+      const newPost: BlogPost = {
+        id: `post-${Date.now()}`,
+        slug: formData.title.toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g, '-').slice(0, 50) + `-${Math.floor(1000 + Math.random() * 9000)}`,
+        title: formData.title.trim(),
+        excerpt: (formData.excerpt || formData.content.substring(0, 160) + '...').trim(),
+        content: formData.content.trim(),
+        coverImage: formData.coverImage,
+        category: formData.category,
+        tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        author: {
+          name: 'এডমিন',
+          role: 'amarmetro.com',
+        },
+        readTime: `${Math.max(1, Math.ceil(formData.content.length / 450))} মিনিট`,
+        views: 1,
+        createdAt: new Date().toISOString().split('T')[0],
+        status: formData.status,
+      };
+
+      const existingCached = localStorage.getItem('amarmetro_posts_cache');
+      const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
+      const updatedPosts = [newPost, ...currentPosts];
+      localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+
+      showNotification(
+        'success',
+        lang === 'bn'
+          ? 'পোস্ট লোকাল স্টোরেজে যুক্ত হয়েছে (GitHub Pages মোড)! সবার জন্য স্থায়ী করতে "posts.json ডাউনলোড" করে রিপোজিটরিতে data/posts.json আপডেট করতে পারেন।'
+          : 'Post saved locally (GitHub Pages mode). Download posts.json to commit changes permanently.'
+      );
+    }
+
+    // Reset form
+    setFormData({
+      title: '',
+      excerpt: '',
+      content: '',
+      category: 'খবর ও আপডেট',
+      coverImage: PRESET_IMAGE_OPTIONS[0].url,
+      tags: 'মেট্রো, ঢাকা, ট্রেন',
+      authorName: 'এডমিন',
+      authorRole: 'amarmetro.com',
+      status: 'published',
+    });
+    setIsSubmitting(false);
+    await onRefreshPosts();
+    setAdminTab('manage');
   };
 
   const handleUpdatePost = async (e: React.FormEvent) => {
@@ -198,6 +247,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!editingPost) return;
 
     setIsSubmitting(true);
+    let serverUpdated = false;
+
     try {
       const response = await fetch(`/api/posts/${editingPost.id}`, {
         method: 'PUT',
@@ -214,19 +265,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         }),
       });
 
-      const data = await response.json();
-      if (response.ok && data.success) {
-        showNotification('success', lang === 'bn' ? 'পোস্ট সফলভাবে আপডেট করা হয়েছে' : 'Post updated successfully');
-        setEditingPost(null);
-        await onRefreshPosts();
-      } else {
-        showNotification('error', data.message || 'Update failed');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          serverUpdated = true;
+          showNotification('success', lang === 'bn' ? 'পোস্ট সফলভাবে আপডেট করা হয়েছে' : 'Post updated successfully');
+        }
       }
     } catch (err: any) {
-      showNotification('error', err.message || 'Failed to update post');
-    } finally {
-      setIsSubmitting(false);
+      console.warn('Backend update failed, updating static local state:', err);
     }
+
+    if (!serverUpdated) {
+      const existingCached = localStorage.getItem('amarmetro_posts_cache');
+      const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
+      const updatedPosts = currentPosts.map((p) => (p.id === editingPost.id ? editingPost : p));
+      localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+      showNotification('success', lang === 'bn' ? 'পোস্ট সফলভাবে আপডেট হয়েছে (লোকাল স্টোরেজ)' : 'Post updated locally');
+    }
+
+    setEditingPost(null);
+    setIsSubmitting(false);
+    await onRefreshPosts();
   };
 
   const handleDeletePost = async (id: string, title: string) => {
@@ -237,22 +297,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     if (!confirmDelete) return;
 
+    let serverDeleted = false;
     try {
       const response = await fetch(`/api/posts/${id}`, { method: 'DELETE' });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        showNotification('success', lang === 'bn' ? 'পোস্ট মুছে ফেলা হয়েছে' : 'Post deleted successfully');
-        await onRefreshPosts();
-      } else {
-        showNotification('error', data.message || 'Failed to delete');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          serverDeleted = true;
+          showNotification('success', lang === 'bn' ? 'পোস্ট মুছে ফেলা হয়েছে' : 'Post deleted successfully');
+        }
       }
     } catch (err: any) {
-      showNotification('error', err.message || 'Network error');
+      console.warn('Backend delete failed, removing from local state:', err);
     }
+
+    if (!serverDeleted) {
+      const existingCached = localStorage.getItem('amarmetro_posts_cache');
+      const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
+      const updatedPosts = currentPosts.filter((p) => p.id !== id);
+      localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+      showNotification('success', lang === 'bn' ? 'পোস্ট মুছে ফেলা হয়েছে (লোকাল স্টোরেজ)' : 'Post deleted locally');
+    }
+
+    await onRefreshPosts();
   };
 
   const handleToggleStatus = async (post: BlogPost) => {
     const newStatus = post.status === 'published' ? 'draft' : 'published';
+    let serverUpdated = false;
+
     try {
       const response = await fetch(`/api/posts/${post.id}`, {
         method: 'PUT',
@@ -260,17 +333,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         body: JSON.stringify({ status: newStatus }),
       });
       if (response.ok) {
+        serverUpdated = true;
         showNotification(
           'success',
           newStatus === 'published'
             ? lang === 'bn' ? 'পোস্ট প্রকাশিত করা হয়েছে' : 'Post published'
             : lang === 'bn' ? 'পোস্ট ড্রাফট করা হয়েছে' : 'Post moved to draft'
         );
-        await onRefreshPosts();
       }
     } catch (err: any) {
-      showNotification('error', 'Status toggle failed');
+      console.warn('Backend status toggle failed, updating local state:', err);
     }
+
+    if (!serverUpdated) {
+      const existingCached = localStorage.getItem('amarmetro_posts_cache');
+      const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
+      const updatedPosts = currentPosts.map((p) => (p.id === post.id ? { ...p, status: newStatus } : p));
+      localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+      showNotification('success', lang === 'bn' ? `স্ট্যাটাস পরিবর্তন: ${newStatus}` : `Status updated to ${newStatus}`);
+    }
+
+    await onRefreshPosts();
   };
 
   return (
@@ -869,17 +952,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Tab 2: Manage Existing Posts */}
               {adminTab === 'manage' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <h5 className="font-bold text-sm text-slate-800">
                       {lang === 'bn' ? 'সকল ব্লগ পোস্টের তালিকা' : 'All Blog Posts'}
                     </h5>
-                    <button
-                      onClick={() => onRefreshPosts()}
-                      className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-emerald-700 cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>{lang === 'bn' ? 'রিফ্রেশ' : 'Refresh'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleDownloadPostsJson}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                        title="GitHub এ data/posts.json ফাইল রিপ্লেস করতে এই ফাইলটি ডাউনলোড করুন"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{lang === 'bn' ? '📥 data/posts.json ডাউনলোড' : 'Download posts.json'}</span>
+                      </button>
+                      <button
+                        onClick={() => onRefreshPosts()}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-600 hover:text-emerald-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>{lang === 'bn' ? 'রিফ্রেশ' : 'Refresh'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
@@ -980,9 +1073,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold inline-flex items-center justify-center">
                           ১
                         </span>
-                        <h6 className="font-bold text-slate-900 text-sm">এডমিন প্যানেল ওপেন করুন</h6>
+                        <h6 className="font-bold text-slate-900 text-sm">গোপন লিংকে প্রবেশ করুন</h6>
                         <p className="leading-relaxed">
-                          যেকোনো পাতার উপরের ডানপাশে থাকা <strong>"🔒 এডমিন / পোস্ট পাবলিশার"</strong> বাটনে ক্লিক করুন।
+                          ব্রাউজারের অ্যাড্রেস বারে সরাসরি লিখুন: <code className="bg-emerald-100 text-emerald-950 font-mono font-bold px-1 rounded">/backend/login</code> (সাধারণ ভিজিটরদের থেকে এই লিংক সম্পূর্ণ গোপন রাখা হয়েছে)।
                         </p>
                       </div>
 
@@ -1053,6 +1146,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <strong>ধাপ ৪: ডিপেনডেন্সি ইন্সটল ও রান করুন</strong><br />
                           Node.js App পেজে ফিরে এসে <strong>"Run NPM Install"</strong> বাটনে ক্লিক করুন। এরপর উপরে থাকা <strong>"Restart"</strong> বাটনে চাপলেই আপনার ওয়েবসাইট <strong>amarmetro.com</strong> এ পুরোপুরি চালু হয়ে যাবে!
                         </p>
+                      </div>
+                    </div>
+
+                    {/* GitHub Pages Hosting Guide */}
+                    <div className="space-y-3 p-4 bg-slate-900 text-slate-100 rounded-2xl border border-slate-700">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                        <h6 className="text-sm font-bold text-white flex items-center gap-1.5">
+                          <span>গিটহাব পেজেস (GitHub Pages) এ সাইট আপলোড ও হোস্ট করার নিয়ম</span>
+                          <span className="bg-blue-500/30 text-blue-300 text-[10px] px-2 py-0.5 rounded-sm font-bold">বিনামূল্যে স্ট্যাটিক হোস্টিং</span>
+                        </h6>
+                      </div>
+
+                      <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
+                        <p>
+                          <strong>১. গিটহাব রিপোজিটরি তৈরি:</strong><br />
+                          GitHub.com এ গিয়ে একটি নতুন রিপোজিটরি তৈরি করুন (যেমন: <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">amarmetro</code>)।
+                        </p>
+                        <p>
+                          <strong>২. বিল্ড তৈরি করা:</strong><br />
+                          আপনার কম্পিউটারের টার্মিনালে কমান্ড চালান: <code className="bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded font-mono">npm run build</code>। এটি একটি সম্পূর্ণ <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">dist/</code> ফোল্ডার তৈরি করবে।
+                        </p>
+                        <p>
+                          <strong>৩. GitHub Pages এ ডিপ্লয় করা:</strong><br />
+                          সহজ উপায়ে <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono">gh-pages</code> প্যাকেজ ব্যবহার করুন:
+                          <br />
+                          কমান্ড চালান: <code className="bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded font-mono">npx gh-pages -d dist</code>
+                        </p>
+                        <p>
+                          <strong>৪. কাস্টম ডোমেইন (amarmetro.com) যুক্ত করা:</strong><br />
+                          GitHub রিপোজিটরির <strong>Settings</strong> ➔ <strong>Pages</strong> এ যান। "Custom domain" বক্সে <code className="bg-slate-800 text-emerald-400 px-1 py-0.5 rounded font-mono font-bold">amarmetro.com</code> লিখে Save করুন।
+                        </p>
+                        <p>
+                          <strong>৫. ডোমেইন DNS রেকর্ড:</strong><br />
+                          আপনার ডোমেইন প্রোভাইডারে ৪টি GitHub IP এর A Record দিন: <code className="bg-slate-800 text-slate-300 font-mono">185.199.108.153</code>, <code className="bg-slate-800 text-slate-300 font-mono">185.199.109.153</code>, <code className="bg-slate-800 text-slate-300 font-mono">185.199.110.153</code>, <code className="bg-slate-800 text-slate-300 font-mono">185.199.111.153</code> এবং CNAME রেকর্ড: <code className="bg-slate-800 text-slate-300 font-mono">www ➔ &lt;username&gt;.github.io</code>।
+                        </p>
+                        <div className="p-2.5 rounded-lg bg-blue-950/60 border border-blue-500/30 text-[11px] text-blue-200">
+                          ℹ️ <strong>স্ট্যাটিক হোস্টিং দ্রষ্টব্য:</strong> গিটহাব পেজেস সম্পূর্ণ স্ট্যাটিক হওয়ায় এখানে ব্যাক-এন্ড নোড সার্ভার থাকে না। তাই আপনার সাইটে স্বয়ংক্রিয় ব্রাউজার লোকাল স্টোরেজ ক্যাশিং দেওয়া হয়েছে যাতে স্ট্যাটিক অবস্থাতেও পোস্টগুলো প্রদর্শিত হয়। স্থায়ী ব্যাক-এন্ড ডাটাবেসের জন্য cPanel বা VPS সবচেয়ে সেরা।
+                        </div>
                       </div>
                     </div>
 

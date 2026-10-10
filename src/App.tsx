@@ -10,6 +10,9 @@ import { AdminPanel } from './components/AdminPanel.tsx';
 import { MrtPassGuide } from './components/MrtPassGuide.tsx';
 import { ScheduleInfo } from './components/ScheduleInfo.tsx';
 import { Footer } from './components/Footer.tsx';
+import { AdBanner } from './components/AdBanner.tsx';
+import defaultPostsData from '../data/posts.json';
+import { INITIAL_BLOG_POSTS } from './data/defaultPosts.ts';
 import { BlogPost } from './types/blog.ts';
 import {
   Train,
@@ -32,18 +35,35 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [selectedStationId, setSelectedStationId] = useState<string>('motijheel');
 
-  // Check URL pathname for hidden dedicated admin path: e.g. /backend/login or /backend or /admin
+  // Check URL pathname or query for hidden dedicated admin path: e.g. /backend/login, /backend, /admin, ?admin=true, #/backend/login
   useEffect(() => {
     const checkAdminPath = () => {
-      const path = window.location.pathname.toLowerCase();
-      if (path === '/backend/login' || path === '/backend' || path === '/admin' || path === '/backend/') {
+      const path = (window.location.pathname || '').toLowerCase();
+      const hash = (window.location.hash || '').toLowerCase();
+      const search = (window.location.search || '').toLowerCase();
+
+      if (
+        path === '/backend/login' ||
+        path === '/backend' ||
+        path === '/admin' ||
+        path === '/backend/' ||
+        path.startsWith('/backend') ||
+        hash.includes('backend') ||
+        hash.includes('admin') ||
+        search.includes('backend=login') ||
+        search.includes('admin=true')
+      ) {
         setIsAdminOpen(true);
       }
     };
 
     checkAdminPath();
     window.addEventListener('popstate', checkAdminPath);
-    return () => window.removeEventListener('popstate', checkAdminPath);
+    window.addEventListener('hashchange', checkAdminPath);
+    return () => {
+      window.removeEventListener('popstate', checkAdminPath);
+      window.removeEventListener('hashchange', checkAdminPath);
+    };
   }, []);
 
   const handleCloseAdmin = () => {
@@ -53,21 +73,47 @@ export default function App() {
     }
   };
 
-  // Fetch blog posts from backend API
+  // Fetch blog posts from backend API (with static GitHub Pages & fallback guarantee)
   const fetchPosts = async () => {
     try {
       setIsLoadingPosts(true);
       const res = await fetch('/api/posts?status=all');
       if (res.ok) {
-        const data = await res.json();
-        if (data.posts) {
-          setPosts(data.posts);
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data && Array.isArray(data.posts) && data.posts.length > 0) {
+            setPosts(data.posts);
+            localStorage.setItem('amarmetro_posts_cache', JSON.stringify(data.posts));
+            return;
+          }
         }
       }
     } catch (err) {
-      console.error('Failed to load posts from backend:', err);
+      console.warn('Backend API unavailable (running static/offline):', err);
     } finally {
       setIsLoadingPosts(false);
+    }
+
+    // Fallback for static hosts (e.g. GitHub Pages)
+    const cached = localStorage.getItem('amarmetro_posts_cache');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPosts(parsed);
+          return;
+        }
+      } catch (e) {
+        console.error('Error parsing cached posts:', e);
+      }
+    }
+
+    // Default bundled posts guarantee
+    if (Array.isArray(defaultPostsData) && defaultPostsData.length > 0) {
+      setPosts(defaultPostsData as BlogPost[]);
+    } else {
+      setPosts(INITIAL_BLOG_POSTS);
     }
   };
 
@@ -90,8 +136,8 @@ export default function App() {
         setLang={setLang}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-10">
+      {/* Main Content Area (pb-24 for mobile bottom bar clearance) */}
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 lg:pb-10 w-full space-y-10">
         {/* HERO SECTION (Shown on Home Tab) */}
         {currentTab === 'home' && (
           <div className="space-y-10">
@@ -187,6 +233,9 @@ export default function App() {
               lang={lang}
               onSelectStation={handleStationClickFromMap}
             />
+
+            {/* Responsive Leaderboard Advertisement Slot (Google AdSense / Sponsor) */}
+            <AdBanner format="leaderboard" />
 
             {/* Metropolitan Feature Highlight Strip */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
