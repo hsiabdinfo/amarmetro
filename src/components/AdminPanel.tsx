@@ -6,6 +6,7 @@ import {
   PlusCircle,
   ListFilter,
   Eye,
+  EyeOff,
   Trash2,
   Edit2,
   CheckCircle,
@@ -23,11 +24,24 @@ import {
   Server,
   Globe,
   Key,
+  KeyRound,
+  ShieldCheck,
+  ShieldAlert,
   Upload,
   Copy,
   Check,
   Download,
 } from 'lucide-react';
+import {
+  verifyAdminPassword,
+  changeAdminPassword,
+  checkLockoutStatus,
+  createAdminSession,
+  clearAdminSession,
+  isSessionValid,
+  getCustomSecretSlug,
+  setCustomSecretSlug,
+} from '../utils/security.ts';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -46,13 +60,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('amarmetro_admin_auth') === 'true';
+    return isSessionValid();
   });
   const [adminPin, setAdminPin] = useState('');
+  const [showLoginPin, setShowLoginPin] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [lockoutStatus, setLockoutStatus] = useState(() => checkLockoutStatus());
 
-  // Admin tabs: 'create' | 'manage' | 'guide'
-  const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'guide'>('create');
+  // Password Change and Security state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showChangePasswords, setShowChangePasswords] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordChangeMsg, setPasswordChangeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [customSlug, setCustomSlug] = useState(() => getCustomSecretSlug());
+  const [slugSavedMsg, setSlugSavedMsg] = useState('');
+
+  // Admin tabs: 'create' | 'manage' | 'security' | 'guide'
+  const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'security' | 'guide'>('create');
   const [contentTab, setContentTab] = useState<'write' | 'preview'>('write');
 
   // New Post Form State (Author strictly set to Admin)
@@ -119,20 +145,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPin === 'admin123' || adminPin === 'admin' || adminPin === 'metro2026' || adminPin === '1234') {
+    setAuthError('');
+    const status = checkLockoutStatus();
+    if (status.isLocked) {
+      setLockoutStatus(status);
+      setAuthError(`অতিরিক্ত ভুল পাসওয়ার্ডের কারণে সিস্টেম সাময়িকভাবে লক রয়েছে। আর ${status.remainingMinutes} মিনিট পর চেষ্টা করুন।`);
+      return;
+    }
+
+    const res = await verifyAdminPassword(adminPin);
+    if (res.success) {
       setIsAuthenticated(true);
-      localStorage.setItem('amarmetro_admin_auth', 'true');
+      setAdminPin('');
       setAuthError('');
+      showNotification('success', lang === 'bn' ? 'সফলভাবে এডমিন প্যানেলে প্রবেশ করেছেন!' : 'Admin access granted!');
     } else {
-      setAuthError(lang === 'bn' ? 'ভুল পাসওয়ার্ড! (ডেমো পাসওয়ার্ড: admin123)' : 'Invalid password! (Demo: admin123)');
+      setAuthError(res.message || 'ভুল পাসওয়ার্ড!');
+      setLockoutStatus(checkLockoutStatus());
     }
   };
 
   const handleLogout = () => {
+    clearAdminSession();
     setIsAuthenticated(false);
-    localStorage.removeItem('amarmetro_admin_auth');
+    setAdminPin('');
+    showNotification('success', lang === 'bn' ? 'লগআউট সম্পন্ন হয়েছে' : 'Logged out successfully');
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsChangingPassword(true);
+    setPasswordChangeMsg(null);
+    const res = await changeAdminPassword(currentPassword, newPassword, confirmPassword);
+    setIsChangingPassword(false);
+    if (res.success) {
+      setPasswordChangeMsg({ type: 'success', text: res.message });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      showNotification('success', lang === 'bn' ? 'এডমিন পাসওয়ার্ড সফলভাবে আপডেট হয়েছে!' : 'Password updated!');
+    } else {
+      setPasswordChangeMsg({ type: 'error', text: res.message });
+    }
+  };
+
+  const handleSaveSlugSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCustomSecretSlug(customSlug);
+    setSlugSavedMsg(lang === 'bn' ? 'গোপন হ্যাশট্যাগ সংরক্ষিত হয়েছে!' : 'Secret access slug saved!');
+    setTimeout(() => setSlugSavedMsg(''), 4000);
+    showNotification('success', lang === 'bn' ? 'গোপন এক্সেস হ্যাশট্যাগ সংরক্ষিত হয়েছে!' : 'Secret slug saved!');
+  };
+
+  const getPasswordStrength = (pwd: string) => {
+    if (!pwd) return { label: '', color: 'bg-slate-200', textCol: 'text-slate-400', width: '0%' };
+    let score = 0;
+    if (pwd.length >= 6) score += 1;
+    if (pwd.length >= 10) score += 1;
+    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score += 1;
+    if (/[0-9]/.test(pwd)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pwd)) score += 1;
+
+    if (score <= 2) return { label: 'দুর্বল (Weak)', color: 'bg-rose-500', textCol: 'text-rose-600', width: '33%' };
+    if (score <= 3) return { label: 'মাঝারি (Medium)', color: 'bg-amber-500', textCol: 'text-amber-600', width: '66%' };
+    return { label: 'শক্তিশালী ও নিরাপদ (Strong)', color: 'bg-emerald-500', textCol: 'text-emerald-600', width: '100%' };
   };
 
   const handleDownloadPostsJson = () => {
@@ -419,60 +497,79 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Body Area */}
         <div className="flex-1 overflow-y-auto p-6 sm:p-8">
           {!isAuthenticated ? (
-            /* Authentication Screen */
-            <div className="max-w-md mx-auto py-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 mx-auto mb-4">
-                <Lock className="w-8 h-8" />
+            /* Secure Authentication Screen */
+            <div className="max-w-md mx-auto py-10 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400 mx-auto mb-4 shadow-sm">
+                <ShieldCheck className="w-8 h-8" />
               </div>
 
-              <h4 className="text-xl font-bold text-slate-900 mb-2">
-                {lang === 'bn' ? 'এডমিন অ্যাক্সেস আবশ্যক' : 'Admin Authentication Required'}
+              <h4 className="text-xl font-extrabold text-slate-900 mb-2">
+                {lang === 'bn' ? 'সুরক্ষিত এডমিন পোর্টাল' : 'Secure Admin Portal'}
               </h4>
-              <p className="text-xs text-slate-500 mb-6">
+              <p className="text-xs text-slate-500 mb-6 max-w-sm mx-auto leading-relaxed">
                 {lang === 'bn'
-                  ? 'amarmetro.com এ পোস্ট প্রকাশ করার জন্য আপনার এডমিন পাসওয়ার্ড লিখুন।'
-                  : 'Enter your admin password to publish or modify blog content.'}
+                  ? 'amarmetro.com সাইটের কন্টেন্ট প্রকাশ ও সম্পাদনার জন্য পাসওয়ার্ড প্রদান করুন।'
+                  : 'Enter your admin password to access publishing and system management.'}
               </p>
 
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <input
-                    type="password"
-                    placeholder={lang === 'bn' ? 'এডমিন পাসওয়ার্ড লিখুন' : 'Enter admin password'}
-                    value={adminPin}
-                    onChange={(e) => setAdminPin(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-center font-mono text-base focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                    autoFocus
-                  />
-                  {authError && <p className="text-xs text-rose-600 mt-2 font-medium">{authError}</p>}
+              {lockoutStatus.isLocked ? (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-left mb-6 space-y-2">
+                  <div className="flex items-center gap-2 text-rose-700 font-bold text-sm">
+                    <ShieldAlert className="w-5 h-5 shrink-0" />
+                    <span>{lang === 'bn' ? 'লগইন সাময়িকভাবে স্থগিত!' : 'Login Temporarily Locked!'}</span>
+                  </div>
+                  <p className="text-xs text-rose-600 leading-relaxed">
+                    {lang === 'bn'
+                      ? `হ্যাকিং প্রতিরোধে ৫ বার ভুল পাসওয়ার্ড দেওয়ায় সিস্টেম লক করা হয়েছে। অনুগ্রহ করে ${lockoutStatus.remainingMinutes} মিনিট পর আবার চেষ্টা করুন।`
+                      : `Access locked after multiple failed attempts. Please wait ${lockoutStatus.remainingMinutes} minutes before retrying.`}
+                  </p>
                 </div>
+              ) : (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="relative">
+                    <input
+                      type={showLoginPin ? 'text' : 'password'}
+                      placeholder={lang === 'bn' ? 'এডমিন পাসওয়ার্ড লিখুন' : 'Enter admin password'}
+                      value={adminPin}
+                      onChange={(e) => setAdminPin(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-center font-mono text-base focus:outline-hidden focus:ring-2 focus:ring-emerald-500 pr-12"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPin((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title={showLoginPin ? 'হাইড করুন' : 'পাসওয়ার্ড দেখুন'}
+                    >
+                      {showLoginPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Unlock className="w-4 h-4" />
-                  <span>{lang === 'bn' ? 'প্যানেলে প্রবেশ করুন' : 'Unlock Dashboard'}</span>
-                </button>
+                  {authError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium text-left flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
 
-                {/* Instant Demo Helper */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center justify-between">
-                  <span>
-                    {lang === 'bn' ? 'ডেমো এডমিন পাসওয়ার্ড:' : 'Demo Pass:'} <strong className="text-slate-800 font-mono">admin123</strong>
-                  </span>
                   <button
-                    type="button"
-                    onClick={() => {
-                      setAdminPin('admin123');
-                      setIsAuthenticated(true);
-                      localStorage.setItem('amarmetro_admin_auth', 'true');
-                    }}
-                    className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                    type="submit"
+                    className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs"
                   >
-                    {lang === 'bn' ? '১-ক্লিকে লগইন' : '1-Click Login'}
+                    <KeyRound className="w-4 h-4" />
+                    <span>{lang === 'bn' ? 'নিরাপদ লগইন করুন' : 'Secure Login'}</span>
                   </button>
-                </div>
-              </form>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-[11px] text-slate-500 text-left flex items-start gap-2">
+                    <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>
+                      {lang === 'bn'
+                        ? 'লগইন লিংক ও পোর্টাল সাধারণ ভিজিটরদের কাছে সম্পূর্ণ লুকানো। পাসওয়ার্ড পরিবর্তন করতে লগইন করার পর "নিরাপত্তা ও পাসওয়ার্ড" ট্যাবে যান।'
+                        : 'Admin gateway is hidden from visitors. Update your password anytime in Security & Password tab.'}
+                    </span>
+                  </div>
+                </form>
+              )}
             </div>
           ) : editingPost ? (
             /* Editing An Existing Post Screen */
@@ -607,6 +704,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     <ListFilter className="w-4 h-4" />
                     <span>{lang === 'bn' ? `পোস্ট ব্যবস্থাপনা (${posts.length})` : `Manage Posts (${posts.length})`}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminTab('security')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
+                      adminTab === 'security'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>{lang === 'bn' ? 'নিরাপত্তা ও পাসওয়ার্ড' : 'Security & Password'}</span>
                   </button>
 
                   <button
@@ -1035,6 +1144,265 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: Security & Password Management */}
+              {adminTab === 'security' && (
+                <div className="space-y-6">
+                  {/* Security Header Banner */}
+                  <div className="bg-gradient-to-r from-slate-900 to-emerald-950 text-white p-6 rounded-2xl shadow-sm border border-slate-800">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>{lang === 'bn' ? 'অ্যাডমিন নিরাপত্তা ও পাসওয়ার্ড ব্যবস্থাপনা' : 'Security & Password Management'}</span>
+                          <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-sm">
+                            SHA-256 Protected
+                          </span>
+                        </h4>
+                        <p className="text-xs text-slate-300">
+                          {lang === 'bn'
+                            ? 'অননুমোদিত প্রবেশ ও হ্যাকিং প্রতিরোধে পাসওয়ার্ড পরিবর্তন, ব্রুট-ফোর্স প্রটেকশন স্ট্যাটাস এবং গোপন প্রবেশদ্বার কনফিগারেশন।'
+                            : 'Harden access, change admin password, and manage secret access endpoints.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Card 1: Password Change Form */}
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                      <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                        <KeyRound className="w-5 h-5 text-emerald-600" />
+                        <h5 className="font-bold text-slate-900 text-sm">
+                          {lang === 'bn' ? 'অ্যাডমিন পাসওয়ার্ড পরিবর্তন করুন' : 'Change Admin Password'}
+                        </h5>
+                      </div>
+
+                      {passwordChangeMsg && (
+                        <div
+                          className={`p-3.5 rounded-xl text-xs font-medium flex items-start gap-2.5 ${
+                            passwordChangeMsg.type === 'success'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-800 border border-rose-200'
+                          }`}
+                        >
+                          {passwordChangeMsg.type === 'success' ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          )}
+                          <div className="space-y-1">
+                            <p>{passwordChangeMsg.text}</p>
+                            {passwordChangeMsg.type === 'success' && (
+                              <p className="text-[11px] text-emerald-700 font-semibold">
+                                ℹ️ নতুন পাসওয়ার্ডটি মনে রাখুন অথবা নিরাপদ স্থানে লিখে রাখুন।
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">
+                            {lang === 'bn' ? 'বর্তমান পাসওয়ার্ড (Current Password) *' : 'Current Password *'}
+                          </label>
+                          <input
+                            type={showChangePasswords ? 'text' : 'password'}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder={lang === 'bn' ? 'বর্তমান পাসওয়ার্ড লিখুন' : 'Enter current password'}
+                            required
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">
+                            {lang === 'bn' ? 'নতুন পাসওয়ার্ড (New Password) *' : 'New Password *'}
+                          </label>
+                          <input
+                            type={showChangePasswords ? 'text' : 'password'}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder={lang === 'bn' ? 'কমপক্ষে ৬-৮ অক্ষরের শক্তিশালী পাসওয়ার্ড' : 'Enter new strong password'}
+                            required
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                          />
+                          {/* Strength Bar */}
+                          {newPassword && (
+                            <div className="mt-2 space-y-1">
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${getPasswordStrength(newPassword).color}`}
+                                  style={{ width: getPasswordStrength(newPassword).width }}
+                                ></div>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-slate-400">নিরাপত্তা মান:</span>
+                                <span className={`font-semibold ${getPasswordStrength(newPassword).textCol}`}>
+                                  {getPasswordStrength(newPassword).label}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 block mb-1">
+                            {lang === 'bn' ? 'নতুন পাসওয়ার্ড পুনরায় নিশ্চিত করুন *' : 'Confirm New Password *'}
+                          </label>
+                          <input
+                            type={showChangePasswords ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder={lang === 'bn' ? 'পুনরায় নতুন পাসওয়ার্ডটি লিখুন' : 'Re-type new password'}
+                            required
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={showChangePasswords}
+                              onChange={(e) => setShowChangePasswords(e.target.checked)}
+                              className="rounded-sm border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span>{lang === 'bn' ? 'পাসওয়ার্ডগুলো দৃশ্যমান করুন' : 'Show passwords'}</span>
+                          </label>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isChangingPassword}
+                          className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                        >
+                          <Save className="w-4 h-4" />
+                          <span>
+                            {isChangingPassword
+                              ? (lang === 'bn' ? 'সংরক্ষণ হচ্ছে...' : 'Saving...')
+                              : (lang === 'bn' ? 'নতুন পাসওয়ার্ড সংরক্ষণ করুন' : 'Save New Password')}
+                          </span>
+                        </button>
+                      </form>
+
+                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed">
+                        ⚠️ <strong>সতর্কতা:</strong> পাসওয়ার্ড সফলভাবে পরিবর্তনের সাথে সাথে পূর্বের ডেমো পাসওয়ার্ড চিরতরে বাতিল হয়ে যাবে। আপনি ছাড়া অন্য কোনো ব্যক্তি এটি অনুমান করতে পারবে না।
+                      </div>
+                    </div>
+
+                    {/* Card 2: Secret Entry & Anti-Hacking Protection */}
+                    <div className="space-y-6">
+                      {/* Hidden Login Gates */}
+                      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                          <EyeOff className="w-5 h-5 text-indigo-600" />
+                          <h5 className="font-bold text-slate-900 text-sm">
+                            {lang === 'bn' ? 'লগইন লিঙ্ক হাইডিং ও গোপন প্রবেশদ্বার' : 'Hidden Login Gates & Access'}
+                          </h5>
+                        </div>
+
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          সাধারণ ভিজিটরদের কাছে সাইটের কোথাও কোনো <strong>"এডমিন লগইন"</strong> লিঙ্ক দেখানো হয় না। হ্যাকাররা জানতেই পারবে না লগইন পেজটি কোথায় অবস্থিত। আপনি সাইটে প্রবেশ করার ৩টি গোপন মাধ্যম রয়েছে:
+                        </p>
+
+                        <div className="space-y-2.5 text-xs">
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px]">১</span>
+                              <span>কীবোর্ড শর্টকাট (সবচেয়ে নিরাপদ ও অদৃশ্য)</span>
+                            </div>
+                            <p className="text-slate-600 text-[11px] pl-6.5">
+                              সাইটের যেকোনো পাতায় থাকা অবস্থায় কীবোর্ডে <kbd className="bg-white px-1.5 py-0.5 rounded-sm border border-slate-300 font-mono font-bold text-slate-800">Ctrl + Shift + A</kbd> (ম্যাকে: <kbd className="bg-white px-1.5 py-0.5 rounded-sm border border-slate-300 font-mono font-bold text-slate-800">Cmd + Shift + A</kbd>) চাপুন। সাথে সাথে অ্যাডমিন উইন্ডো ওপেন হবে।
+                            </p>
+                          </div>
+
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px]">২</span>
+                              <span>ব্রাউজার অ্যাড্রেস বার হ্যাশ</span>
+                            </div>
+                            <p className="text-slate-600 text-[11px] pl-6.5">
+                              ব্রাউজারের অ্যাড্রেস বারে <code className="bg-emerald-50 text-emerald-800 font-mono px-1 py-0.5 rounded">https://amarmetro.com/#login</code> বা <code className="bg-emerald-50 text-emerald-800 font-mono px-1 py-0.5 rounded">#backend</code> লিখে এন্টার দিলেও অ্যাডমিন উইন্ডো ওপেন হবে।
+                            </p>
+                          </div>
+
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px]">৩</span>
+                              <span>মোবাইল সিক্রেট ট্যাপ (কীবোর্ড ছাড়া)</span>
+                            </div>
+                            <p className="text-slate-600 text-[11px] pl-6.5">
+                              মোবাইল ফোন থেকে সাইট ভিজিট করলে একদম নিচে ফুটারের কপিরাইট লেখার (© {new Date().getFullYear()} amarmetro.com) ওপর পরপর ৪ বার দ্রুত ট্যাপ করুন। এটি গোপন ইস্টার-এগ হিসেবে কাজ করে!
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Custom Secret Slug Form */}
+                        <form onSubmit={handleSaveSlugSubmit} className="pt-2 border-t border-slate-100 space-y-2">
+                          <label className="text-xs font-bold text-slate-700 block">
+                            {lang === 'bn' ? 'কাস্টম গোপন এক্সেস হ্যাশট্যাগ (Optional Custom Secret Key):' : 'Custom Secret Access Slug:'}
+                          </label>
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">#</span>
+                              <input
+                                type="text"
+                                value={customSlug}
+                                onChange={(e) => setCustomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                                placeholder="metro-admin"
+                                className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold cursor-pointer shrink-0"
+                            >
+                              {lang === 'bn' ? 'সেভ করুন' : 'Save'}
+                            </button>
+                          </div>
+                          {slugSavedMsg && (
+                            <p className="text-[11px] text-emerald-700 font-semibold">{slugSavedMsg}</p>
+                          )}
+                          <p className="text-[10px] text-slate-400">
+                            সেভ করার পর আপনি ব্রাউজারে <code className="text-slate-700 font-mono">amarmetro.com/#{customSlug}</code> লিখলেও অ্যাডমিন প্যানেল খুলবে।
+                          </p>
+                        </form>
+                      </div>
+
+                      {/* Anti-Hacking Feature Checklist */}
+                      <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-xs space-y-3 border border-slate-800">
+                        <h6 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>হ্যাকিং প্রতিরোধ নিরাপত্তা ফ্রেমওয়ার্ক</span>
+                        </h6>
+                        <ul className="space-y-2 text-xs text-slate-300">
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span><strong>ব্রুট-ফোর্স লকআউট:</strong> পরপর ৫ বার ভুল পাসওয়ার্ড দিলে অ্যাকাউন্ট স্বয়ংক্রিয়ভাবে ১৫ মিনিটের জন্য লক হয়ে যায়। কোনো রোবট বা বট পাসওয়ার্ড অনুমান করতে পারবে না।</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span><strong>ক্রিপ্টোগ্রাফিক সল্ট ও হ্যাশ:</strong> পাসওয়ার্ড সরাসরি প্লেইন টেক্সট হিসেবে থাকে না, ব্রাউজারের Web Crypto SHA-256 দিয়ে এনক্রিপ্ট হয়ে সুরক্ষিত থাকে।</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span><strong>৪-ঘণ্টা সেশন টাইমআউট:</strong> লগইন অবস্থায় ডিভাইস রেখে উঠে গেলেও ৪ ঘণ্টা পর স্বয়ংক্রিয়ভাবে সেশন লক হয়ে যাবে।</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span><strong>জিরো ফুটার ফুটপ্রিন্ট:</strong> সাধারণ ভিজিটরদের সামনে সাইটে কোনো এডমিন লগইন লিঙ্ক দেখানো হয় না।</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

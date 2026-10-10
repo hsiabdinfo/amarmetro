@@ -92,14 +92,47 @@ app.get('/api/posts/:id', (req, res) => {
   res.json({ success: true, post: posts[postIndex] });
 });
 
+const AUTH_FILE = path.join(__dirname, 'data', 'auth.json');
+
 // Admin verify
 app.post('/api/admin/verify', (req, res) => {
-  const { password } = req.body;
-  // Default password or demo convenience
+  const { password, hash } = req.body;
+
+  try {
+    if (fs.existsSync(AUTH_FILE)) {
+      const authData = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
+      if (authData && authData.passwordHash) {
+        if (hash && hash === authData.passwordHash) {
+          return res.json({ success: true, token: 'amarmetro-secure-token' });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error reading auth file:', e);
+  }
+
   if (password === 'admin123' || password === 'metro2026' || password === 'admin') {
     return res.json({ success: true, token: 'demo-admin-token-valid' });
   }
   return res.status(401).json({ success: false, message: 'ভুল এডমিন পাসওয়ার্ড। অনুগ্রহ করে আবার চেষ্টা করুন।' });
+});
+
+// Admin change password
+app.post('/api/admin/change-password', (req, res) => {
+  try {
+    const { newHash } = req.body;
+    if (!newHash) {
+      return res.status(400).json({ success: false, message: 'পাসওয়ার্ড হ্যাশ প্রয়োজন।' });
+    }
+    const dir = path.dirname(AUTH_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(AUTH_FILE, JSON.stringify({ passwordHash: newHash, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
+    return res.json({ success: true, message: 'পাসওয়ার্ড সফলভাবে সার্ভারে সংরক্ষিত হয়েছে।' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: 'সার্ভার ত্রুটি: ' + err.message });
+  }
 });
 
 // Image Upload endpoint (saves images to disk in /uploads/)

@@ -109,22 +109,33 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
         </div>
 
         <div className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>© {new Date().getFullYear()} amarmetro.com. {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}</p>
+          <p
+            onClick={() => {
+              // Secret admin easter egg: clicking copyright 4 times rapidly opens admin
+              if (!onOpenAdmin) return;
+              const now = Date.now();
+              const lastClick = (window as any).__lastAdminClick || 0;
+              const clickCount = (window as any).__adminClicks || 0;
+              if (now - lastClick < 800) {
+                const newCount = clickCount + 1;
+                (window as any).__adminClicks = newCount;
+                if (newCount >= 4) {
+                  (window as any).__adminClicks = 0;
+                  onOpenAdmin();
+                }
+              } else {
+                (window as any).__adminClicks = 1;
+              }
+              (window as any).__lastAdminClick = now;
+            }}
+            className="cursor-default select-none"
+          >
+            © {new Date().getFullYear()} amarmetro.com. {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}
+          </p>
           <div className="flex items-center gap-4 flex-wrap justify-center">
             <p className="flex items-center gap-1">
               <span>{lang === 'bn' ? 'ঢাকার সম্মানিত যাত্রী ও নাগরিকদের জন্য নিবেদিত' : 'Crafted for Dhaka transit commuters'}</span>
             </p>
-            {onOpenAdmin && (
-              <button
-                type="button"
-                onClick={onOpenAdmin}
-                className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer bg-slate-800/60 hover:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700/60"
-                title={lang === 'bn' ? 'অ্যাডমিন কন্ট্রোল ও ব্লগ প্রকাশনা' : 'Admin Publishing Portal'}
-              >
-                <Lock className="w-3 h-3 text-emerald-400" />
-                <span className="font-medium">{lang === 'bn' ? 'এডমিন লগইন' : 'Admin Login'}</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

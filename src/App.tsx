@@ -14,6 +14,7 @@ import { AdBanner } from './components/AdBanner.tsx';
 import defaultPostsData from '../data/posts.json';
 import { INITIAL_BLOG_POSTS } from './data/defaultPosts.ts';
 import { BlogPost } from './types/blog.ts';
+import { getCustomSecretSlug } from './utils/security.ts';
 import {
   Train,
   Clock,
@@ -35,12 +36,13 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [selectedStationId, setSelectedStationId] = useState<string>('motijheel');
 
-  // Check URL pathname, hash, or query for admin path (e.g. /backend/login, #login, #admin, ?admin=true)
+  // Check URL pathname, hash, or query for admin path (e.g. /backend/login, #login, #admin, or custom secret slug)
   useEffect(() => {
     const checkAdminPath = () => {
       const path = (window.location.pathname || '').toLowerCase();
       const hash = (window.location.hash || '').toLowerCase();
       const search = (window.location.search || '').toLowerCase();
+      const customSlug = getCustomSecretSlug().toLowerCase();
 
       if (
         path === '/backend/login' ||
@@ -52,6 +54,8 @@ export default function App() {
         hash.includes('backend') ||
         hash.includes('admin') ||
         hash.includes('login') ||
+        (customSlug && hash.includes(customSlug)) ||
+        (customSlug && search.includes(customSlug)) ||
         search.includes('backend') ||
         search.includes('admin') ||
         search.includes('login')
