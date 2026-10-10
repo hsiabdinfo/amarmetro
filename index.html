@@ -100,7 +100,28 @@
     </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased font-['SolaimanLipi','Hind_Siliguri','Noto_Sans_Bengali',sans-serif]">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Semantic Fallback for Search Engine & AdSense Crawlers (Hydrated by React on load) -->
+      <header style="padding: 1rem; text-align: center; background: #047857; color: white;">
+        <h1 style="font-size: 1.5rem; font-weight: bold; margin: 0;">Amar Metro - আমার মেট্রো</h1>
+        <p style="margin-top: 0.25rem;">ঢাকা মেট্রো রেল গাইড, লাইভ ভাড়া ক্যালকুলেটর, সময়সূচী ও ট্রানজিট ব্লগ</p>
+      </header>
+      <main style="max-width: 800px; margin: 2rem auto; padding: 0 1rem; font-family: sans-serif; line-height: 1.6;">
+        <h2>ঢাকা মেট্রো রেল (MRT Line 6) ভ্রমণ নির্দেশিকা</h2>
+        <p>আমার মেট্রো (amarmetro.com) হলো ঢাকা মেট্রো রেলের সম্পূর্ণ ডিজিটাল প্ল্যাটফর্ম। এখানে আপনি পাবেন লাইভ ভাড়া ক্যালকুলেটর, প্রতিটি স্টেশনের বিস্তারিত তথ্য, ট্রেনের সময়সূচী, এমআরটি পাসের নিয়মাবলী এবং ঢাকা শহরের কানেক্টিং বাস রুটের বিশদ গাইড।</p>
+        <ul>
+          <li><strong>মেট্রোরেল ভাড়া ও সময়সূচী:</strong> উত্তরা উত্তর থেকে মতিঝিল পর্যন্ত নিয়মিত ভাড়া ও এমআরটি পাসের ১০% ডিসকাউন্ট রেট।</li>
+          <li><strong>স্টেশন নির্দেশিকা:</strong> ১৬টি স্টেশনের গেট, লিফট, এসকেলেটর ও সংযোগকারী পরিবহন তথ্য।</li>
+          <li><strong>ঢাকা বাস রুট:</strong> মেট্রো স্টেশন সংলগ্ন বিভিন্ন রুটের বাসের তালিকা।</li>
+          <li><strong>ট্রানজিট ব্লগ:</strong> ঢাকা গণপরিবহন ও মেট্রো সম্পর্কিত সর্বশেষ সংবাদ ও নিবন্ধ।</li>
+        </ul>
+      </main>
+    </div>
+    <noscript>
+      <div style="padding: 20px; text-align: center; background: #fee2e2; color: #991b1b;">
+        এই ওয়েবসাইটটি পূর্ণাঙ্গভাবে দেখতে ব্রাউজারে জাভাস্ক্রিপ্ট (JavaScript) সক্রিয় রাখুন।
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
