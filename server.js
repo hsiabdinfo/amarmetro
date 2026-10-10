@@ -16,6 +16,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
 app.use("/uploads", express.static(UPLOADS_DIR));
+app.use("/fonts", express.static(path.join(__dirname, "public", "fonts")));
 function getPosts() {
   try {
     if (!fs.existsSync(DATA_FILE)) {
@@ -68,12 +69,41 @@ app.get("/api/posts/:id", (req, res) => {
   savePosts(posts);
   res.json({ success: true, post: posts[postIndex] });
 });
+var AUTH_FILE = path.join(__dirname, "data", "auth.json");
 app.post("/api/admin/verify", (req, res) => {
-  const { password } = req.body;
+  const { password, hash } = req.body;
+  try {
+    if (fs.existsSync(AUTH_FILE)) {
+      const authData = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
+      if (authData && authData.passwordHash) {
+        if (hash && hash === authData.passwordHash) {
+          return res.json({ success: true, token: "amarmetro-secure-token" });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading auth file:", e);
+  }
   if (password === "admin123" || password === "metro2026" || password === "admin") {
     return res.json({ success: true, token: "demo-admin-token-valid" });
   }
   return res.status(401).json({ success: false, message: "\u09AD\u09C1\u09B2 \u098F\u09A1\u09AE\u09BF\u09A8 \u09AA\u09BE\u09B8\u0993\u09DF\u09BE\u09B0\u09CD\u09A1\u0964 \u0985\u09A8\u09C1\u0997\u09CD\u09B0\u09B9 \u0995\u09B0\u09C7 \u0986\u09AC\u09BE\u09B0 \u099A\u09C7\u09B7\u09CD\u099F\u09BE \u0995\u09B0\u09C1\u09A8\u0964" });
+});
+app.post("/api/admin/change-password", (req, res) => {
+  try {
+    const { newHash } = req.body;
+    if (!newHash) {
+      return res.status(400).json({ success: false, message: "\u09AA\u09BE\u09B8\u0993\u09DF\u09BE\u09B0\u09CD\u09A1 \u09B9\u09CD\u09AF\u09BE\u09B6 \u09AA\u09CD\u09B0\u09DF\u09CB\u099C\u09A8\u0964" });
+    }
+    const dir = path.dirname(AUTH_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(AUTH_FILE, JSON.stringify({ passwordHash: newHash, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2), "utf-8");
+    return res.json({ success: true, message: "\u09AA\u09BE\u09B8\u0993\u09DF\u09BE\u09B0\u09CD\u09A1 \u09B8\u09AB\u09B2\u09AD\u09BE\u09AC\u09C7 \u09B8\u09BE\u09B0\u09CD\u09AD\u09BE\u09B0\u09C7 \u09B8\u0982\u09B0\u0995\u09CD\u09B7\u09BF\u09A4 \u09B9\u09DF\u09C7\u099B\u09C7\u0964" });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "\u09B8\u09BE\u09B0\u09CD\u09AD\u09BE\u09B0 \u09A4\u09CD\u09B0\u09C1\u099F\u09BF: " + err.message });
+  }
 });
 app.post("/api/upload", (req, res) => {
   try {

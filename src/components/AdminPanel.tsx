@@ -97,12 +97,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Edit Post State
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
 
+  // Quick Change Image State for published posts
+  const [quickChangeImagePost, setQuickChangeImagePost] = useState<BlogPost | null>(null);
+  const [quickImageSelectedUrl, setQuickImageSelectedUrl] = useState<string>('');
+  const [isSavingQuickImage, setIsSavingQuickImage] = useState(false);
+
   // Status / Loading messages
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // High-performance image processor: compresses large mobile photos & uploads (backend API with local data URL fallback)
+  const compressAndProcessImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const rawDataUrl = (e.target?.result as string) || '';
+        try {
+          const img = new Image();
+          img.onload = async () => {
+            let width = img.width;
+            let height = img.height;
+            const maxDimension = 1400;
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            let optimizedBase64 = rawDataUrl;
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              optimizedBase64 = canvas.toDataURL('image/jpeg', 0.88);
+            }
+
+            // Attempt backend API upload first
+            try {
+              const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: file.name, base64Data: optimizedBase64 }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.url) {
+                  return resolve(data.url);
+                }
+              }
+            } catch (err) {
+              console.warn('Backend /api/upload unavailable, falling back to optimized base64 data URL:', err);
+            }
+
+            // Universal fallback: works even on static GitHub Pages
+            resolve(optimizedBase64);
+          };
+          img.onerror = () => resolve(rawDataUrl);
+          img.src = rawDataUrl;
+        } catch {
+          resolve(rawDataUrl);
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Upload handler for new post creation
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -114,28 +183,108 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     setIsUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Data = reader.result as string;
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: file.name, base64Data }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          showNotification('success', lang === 'bn' ? 'ছবি সফলভাবে আপলোড হয়েছে!' : 'Image uploaded successfully!');
-          setFormData((prev) => ({ ...prev, coverImage: data.url }));
-        } else {
-          showNotification('error', data.message || 'ছবি আপলোড ব্যর্থ হয়েছে');
-        }
-        setIsUploading(false);
-      };
-      reader.readAsDataURL(file);
+      const processedUrl = await compressAndProcessImage(file);
+      if (processedUrl) {
+        setFormData((prev) => ({ ...prev, coverImage: processedUrl }));
+        showNotification('success', lang === 'bn' ? 'ছবি সফলভাবে যুক্ত হয়েছে!' : 'Image attached successfully!');
+      } else {
+        showNotification('error', lang === 'bn' ? 'ছবি প্রসেস করা সম্ভব হয়নি' : 'Failed to process image');
+      }
     } catch (err: any) {
       showNotification('error', 'ছবি আপলোড ব্যর্থ: ' + err.message);
+    } finally {
       setIsUploading(false);
     }
+  };
+
+  // Upload handler for editing an existing published post
+  const handleEditFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingPost) return;
+
+    if (!file.type.startsWith('image/')) {
+      showNotification('error', lang === 'bn' ? 'শুধুমাত্র ছবি ফাইল (JPG, PNG, WebP) আপলোড করুন।' : 'Please upload an image file.');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const processedUrl = await compressAndProcessImage(file);
+      if (processedUrl) {
+        setEditingPost((prev) => (prev ? { ...prev, coverImage: processedUrl } : null));
+        showNotification('success', lang === 'bn' ? 'নতুন ছবি সফলভাবে লোড হয়েছে!' : 'New image attached successfully!');
+      } else {
+        showNotification('error', lang === 'bn' ? 'ছবি প্রসেস করা সম্ভব হয়নি' : 'Failed to process image');
+      }
+    } catch (err: any) {
+      showNotification('error', 'ছবি আপলোড ব্যর্থ: ' + err.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Upload handler for quick image change dialog
+  const handleQuickImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showNotification('error', lang === 'bn' ? 'শুধুমাত্র ছবি ফাইল (JPG, PNG, WebP) আপলোড করুন।' : 'Please upload an image file.');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const processedUrl = await compressAndProcessImage(file);
+      if (processedUrl) {
+        setQuickImageSelectedUrl(processedUrl);
+        showNotification('success', lang === 'bn' ? 'নতুন ছবি সফলভাবে বাছাই করা হয়েছে!' : 'Image selected successfully!');
+      }
+    } catch (err: any) {
+      showNotification('error', 'ছবি বাছাই ব্যর্থ: ' + err.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Quick save changed image for a published post
+  const handleSaveQuickImage = async () => {
+    if (!quickChangeImagePost || !quickImageSelectedUrl.trim()) return;
+
+    setIsSavingQuickImage(true);
+    let serverUpdated = false;
+
+    try {
+      const response = await fetch(`/api/posts/${quickChangeImagePost.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coverImage: quickImageSelectedUrl.trim(),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          serverUpdated = true;
+          showNotification('success', lang === 'bn' ? 'পোস্টের ছবি সফলভাবে পরিবর্তন ও সংরক্ষণ করা হয়েছে!' : 'Cover image updated successfully!');
+        }
+      }
+    } catch (err: any) {
+      console.warn('Backend update failed, updating static local state:', err);
+    }
+
+    if (!serverUpdated) {
+      const existingCached = localStorage.getItem('amarmetro_posts_cache');
+      const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
+      const updatedPosts = currentPosts.map((p) => (p.id === quickChangeImagePost.id ? { ...p, coverImage: quickImageSelectedUrl.trim() } : p));
+      localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+      showNotification('success', lang === 'bn' ? 'পোস্টের ছবি লোকাল স্টোরেজে সফলভাবে পরিবর্তন হয়েছে!' : 'Cover image updated locally!');
+    }
+
+    setQuickChangeImagePost(null);
+    setIsSavingQuickImage(false);
+    await onRefreshPosts();
   };
 
   if (!isOpen) return null;
@@ -632,6 +781,97 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
+                {/* Cover Image & Upload Section for Editing Post */}
+                <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-emerald-600" />
+                      <span>{lang === 'bn' ? 'পোস্টের কাভার ছবি পরিবর্তন করুন' : 'Change Cover Image'}</span>
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      {lang === 'bn' ? 'JPG, PNG, WebP সমর্থিত' : 'JPG, PNG, WebP'}
+                    </span>
+                  </div>
+
+                  {/* Current Image Preview & Quick Actions */}
+                  <div className="flex flex-col sm:flex-row items-center gap-4 p-3 bg-white rounded-xl border border-slate-200">
+                    <div className="relative w-full sm:w-44 h-28 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
+                      <img
+                        src={editingPost.coverImage}
+                        alt="Current Cover"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-1 right-1 bg-black/75 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                        {lang === 'bn' ? 'বর্তমান ছবি' : 'Current'}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-2.5 w-full">
+                      {/* Direct File Upload Button */}
+                      <label className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-98">
+                        <Upload className="w-4 h-4" />
+                        <span>
+                          {isUploading
+                            ? (lang === 'bn' ? 'ছবি আপলোড ও প্রসেসিং হচ্ছে...' : 'Uploading...')
+                            : (lang === 'bn' ? '📁 কম্পিউটার বা মোবাইল থেকে নতুন ছবি দিন' : 'Upload from Device')}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleEditFileUpload}
+                          disabled={isUploading}
+                          className="hidden"
+                        />
+                      </label>
+
+                      {/* Direct URL Input */}
+                      <div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-600 mb-1 font-semibold">
+                          <span>{lang === 'bn' ? 'অথবা ছবির ডিরেক্ট ওয়েব লিংক (URL):' : 'Or direct image URL:'}</span>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder={lang === 'bn' ? 'https://images.unsplash.com/... বা ছবির লিংক' : 'Image URL...'}
+                          value={editingPost.coverImage}
+                          onChange={(e) => setEditingPost({ ...editingPost, coverImage: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-emerald-500 focus:bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Presets Option */}
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
+                      {lang === 'bn' ? 'অথবা নিচে থেকে মেট্রোরেলের প্রস্তুত ছবি বেছে নিন (১-ক্লিক):' : 'Or pick from metro presets (1-click):'}
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {PRESET_IMAGE_OPTIONS.map((img, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setEditingPost({ ...editingPost, coverImage: img.url })}
+                          className={`group relative h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                            editingPost.coverImage === img.url
+                              ? 'border-emerald-600 ring-2 ring-emerald-300'
+                              : 'border-slate-200 hover:border-slate-400'
+                          }`}
+                        >
+                          <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                          <div className="absolute inset-x-0 bottom-0 bg-slate-900/70 p-0.5 text-[8px] text-white font-medium truncate text-center">
+                            {img.name}
+                          </div>
+                          {editingPost.coverImage === img.url && (
+                            <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-2.5 h-2.5" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
                     {lang === 'bn' ? 'সংক্ষিপ্ত সারসংক্ষেপ (Excerpt)' : 'Short Excerpt'}
@@ -1091,11 +1331,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors"
                       >
                         <div className="flex items-center gap-3">
-                          <img
-                            src={post.coverImage}
-                            alt={post.title}
-                            className="w-16 h-12 rounded-lg object-cover bg-slate-100 shrink-0"
-                          />
+                          <div className="relative group shrink-0">
+                            <img
+                              src={post.coverImage}
+                              alt={post.title}
+                              className="w-16 h-12 rounded-lg object-cover bg-slate-100 border border-slate-200 shadow-2xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuickChangeImagePost(post);
+                                setQuickImageSelectedUrl(post.coverImage);
+                              }}
+                              className="absolute inset-0 bg-slate-900/60 text-white rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer shadow-xs"
+                              title={lang === 'bn' ? 'ছবি পরিবর্তন করুন' : 'Change Image'}
+                            >
+                              <ImageIcon className="w-4 h-4" />
+                            </button>
+                          </div>
                           <div>
                             <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-1">
                               <span className="font-semibold text-emerald-700">{post.category}</span>
@@ -1117,7 +1370,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
 
                         {/* Action buttons */}
-                        <div className="flex items-center gap-2 self-end sm:self-center">
+                        <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickChangeImagePost(post);
+                              setQuickImageSelectedUrl(post.coverImage);
+                            }}
+                            className="px-2.5 py-1 text-xs rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold cursor-pointer flex items-center gap-1 shadow-2xs transition-colors"
+                            title={lang === 'bn' ? 'এই পোস্টের ছবি পরিবর্তন করুন' : 'Change Post Image'}
+                          >
+                            <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>{lang === 'bn' ? 'ছবি পরিবর্তন' : 'Change Image'}</span>
+                          </button>
+
                           <button
                             onClick={() => handleToggleStatus(post)}
                             className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 font-medium cursor-pointer"
@@ -1145,6 +1411,158 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     ))}
                   </div>
+
+                  {/* Quick Change Image Dialog for Published Posts */}
+                  {quickChangeImagePost && (
+                    <div className="fixed inset-0 z-60 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+                      <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[92vh] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                              <ImageIcon className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-sm text-slate-900">
+                                {lang === 'bn' ? 'পোস্টের কাভার ছবি পরিবর্তন করুন' : 'Change Post Cover Image'}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 line-clamp-1">
+                                {quickChangeImagePost.title}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setQuickChangeImagePost(null)}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Image Preview Comparison */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                              {lang === 'bn' ? 'বর্তমান ছবি:' : 'Current Image:'}
+                            </span>
+                            <div className="h-28 rounded-lg overflow-hidden border border-slate-200 bg-white shadow-2xs">
+                              <img
+                                src={quickChangeImagePost.coverImage}
+                                alt="Current"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-emerald-700 block mb-1 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" />
+                              <span>{lang === 'bn' ? 'নতুন নির্বাচিত ছবি (প্রিভিউ):' : 'New Selected Image:'}</span>
+                            </span>
+                            <div className="h-28 rounded-lg overflow-hidden border-2 border-emerald-500 bg-white shadow-xs">
+                              <img
+                                src={quickImageSelectedUrl || quickChangeImagePost.coverImage}
+                                alt="New Preview"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Option 1: Upload from Device */}
+                        <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                          <label className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-98">
+                            <Upload className="w-4 h-4" />
+                            <span>
+                              {isUploading
+                                ? (lang === 'bn' ? 'ছবি আপলোড ও প্রসেসিং হচ্ছে...' : 'Processing...')
+                                : (lang === 'bn' ? '📁 কম্পিউটার বা মোবাইল থেকে নতুন ছবি দিন' : 'Upload from Device')}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleQuickImageFileUpload}
+                              disabled={isUploading}
+                              className="hidden"
+                            />
+                          </label>
+                          <p className="text-[10px] text-emerald-800 text-center font-medium">
+                            {lang === 'bn'
+                              ? 'JPG, PNG, WebP সমর্থিত। ছবি স্বয়ংক্রিয়ভাবে অপ্টিমাইজ হয়ে যাবে।'
+                              : 'Supports JPG, PNG, WebP. Automatically optimized.'}
+                          </p>
+                        </div>
+
+                        {/* Option 2: Choose from Metro Presets */}
+                        <div>
+                          <span className="text-xs font-bold text-slate-700 block mb-1.5">
+                            {lang === 'bn' ? 'অথবা ১-ক্লিকে মেট্রোরেলের প্রস্তুত ছবি বেছে নিন:' : 'Or pick from metro presets (1-click):'}
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            {PRESET_IMAGE_OPTIONS.map((img, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => setQuickImageSelectedUrl(img.url)}
+                                className={`group relative h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                                  quickImageSelectedUrl === img.url
+                                    ? 'border-emerald-600 ring-2 ring-emerald-300'
+                                    : 'border-slate-200 hover:border-slate-400'
+                                }`}
+                              >
+                                <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                                <div className="absolute inset-x-0 bottom-0 bg-slate-900/70 p-0.5 text-[8px] text-white font-medium truncate text-center">
+                                  {img.name}
+                                </div>
+                                {quickImageSelectedUrl === img.url && (
+                                  <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                    <Check className="w-2.5 h-2.5" />
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Option 3: Custom URL input */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            {lang === 'bn' ? 'অথবা ছবির ডিরেক্ট ওয়েব URL লিখুন:' : 'Or enter direct image URL:'}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="https://..."
+                            value={quickImageSelectedUrl}
+                            onChange={(e) => setQuickImageSelectedUrl(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-emerald-500 focus:bg-white"
+                          />
+                        </div>
+
+                        {/* Modal Action Buttons */}
+                        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setQuickChangeImagePost(null)}
+                            className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold cursor-pointer"
+                          >
+                            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveQuickImage}
+                            disabled={isSavingQuickImage || !quickImageSelectedUrl.trim()}
+                            className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-98 disabled:opacity-50"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            <span>
+                              {isSavingQuickImage
+                                ? (lang === 'bn' ? 'সংরক্ষণ হচ্ছে...' : 'Saving...')
+                                : (lang === 'bn' ? 'নতুন ছবি সংরক্ষণ করুন' : 'Save New Image')}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

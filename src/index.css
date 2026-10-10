@@ -1,9 +1,12 @@
 @import "tailwindcss";
 
+/* Primary Bengali Font: SolaimanLipi (Bundled local WOFF2 / WOFF) */
 @font-face {
   font-family: 'SolaimanLipi';
-  src: url('https://cdn.jsdelivr.net/gh/maateen/solaimanlipi@master/font/SolaimanLipi.woff') format('woff'),
-       url('https://cdn.jsdelivr.net/gh/maateen/solaimanlipi@master/font/SolaimanLipi.ttf') format('truetype');
+  src: local('SolaimanLipi'),
+       local('Solaiman Lipi'),
+       url('/fonts/solaimanlipi.woff2') format('woff2'),
+       url('/fonts/solaimanlipi.woff') format('woff');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -11,17 +14,23 @@
 
 @font-face {
   font-family: 'SolaimanLipi';
-  src: url('https://cdn.jsdelivr.net/gh/maateen/solaimanlipi@master/font/SolaimanLipi.woff') format('woff'),
-       url('https://cdn.jsdelivr.net/gh/maateen/solaimanlipi@master/font/SolaimanLipi.ttf') format('truetype');
+  src: local('SolaimanLipi Bold'),
+       local('SolaimanLipi-Bold'),
+       local('SolaimanLipi'),
+       url('/fonts/solaimanlipi.woff2') format('woff2'),
+       url('/fonts/solaimanlipi.woff') format('woff');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
-* {
-  font-family: 'SolaimanLipi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+/* Universal high-legibility font stack for desktop and mobile devices */
+html, body, button, input, select, textarea, p, span, h1, h2, h3, h4, h5, h6, a, div {
+  font-family: 'SolaimanLipi', 'Solaiman Lipi', 'Hind Siliguri', 'Noto Sans Bengali', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 body {
-  font-family: 'SolaimanLipi', sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }

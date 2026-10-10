@@ -79,8 +79,11 @@
       ]
     }
     </script>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/maateen/solaimanlipi@master/font/solaimanlipi.css">
+    <!-- Bengali Typography: Local SolaimanLipi Preload + Google Fonts Hind Siliguri / Noto Sans Bengali CDN -->
+    <link rel="preload" href="/fonts/solaimanlipi.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;600;700&display=swap" rel="stylesheet">
 
     <!-- GitHub Pages Single Page App Redirect Decoder -->
     <script>
@@ -96,7 +99,7 @@
       }(window.location))
     </script>
   </head>
-  <body class="bg-slate-50 text-slate-900 antialiased font-['SolaimanLipi',sans-serif]">
+  <body class="bg-slate-50 text-slate-900 antialiased font-['SolaimanLipi','Hind_Siliguri','Noto_Sans_Bengali',sans-serif]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
