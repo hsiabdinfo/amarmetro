@@ -44,6 +44,7 @@ import {
   isSessionValid,
   getCustomSecretSlug,
   setCustomSecretSlug,
+  downloadAuthJson,
 } from '../utils/security.ts';
 import { AdConfig, DEFAULT_AD_CONFIG } from '../types/ad.ts';
 import { getAdConfig, saveAdConfig } from '../utils/ads.ts';
@@ -79,6 +80,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [showChangePasswords, setShowChangePasswords] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordChangeMsg, setPasswordChangeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [lastChangedHash, setLastChangedHash] = useState<string>('');
+  const [copiedHash, setCopiedHash] = useState<boolean>(false);
   const [customSlug, setCustomSlug] = useState(() => getCustomSecretSlug());
   const [slugSavedMsg, setSlugSavedMsg] = useState('');
 
@@ -350,6 +353,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsChangingPassword(false);
     if (res.success) {
       setPasswordChangeMsg({ type: 'success', text: res.message });
+      if (res.newHash) {
+        setLastChangedHash(res.newHash);
+      }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -2552,25 +2558,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {passwordChangeMsg && (
                         <div
-                          className={`p-3.5 rounded-xl text-xs font-medium flex items-start gap-2.5 ${
+                          className={`p-4 rounded-xl text-xs font-medium space-y-3 ${
                             passwordChangeMsg.type === 'success'
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
                               : 'bg-rose-50 text-rose-800 border border-rose-200'
                           }`}
                         >
-                          {passwordChangeMsg.type === 'success' ? (
-                            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          ) : (
-                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                          )}
-                          <div className="space-y-1">
-                            <p>{passwordChangeMsg.text}</p>
-                            {passwordChangeMsg.type === 'success' && (
-                              <p className="text-[11px] text-emerald-700 font-semibold">
-                                ℹ️ নতুন পাসওয়ার্ডটি মনে রাখুন অথবা নিরাপদ স্থানে লিখে রাখুন।
-                              </p>
+                          <div className="flex items-start gap-2.5">
+                            {passwordChangeMsg.type === 'success' ? (
+                              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                             )}
+                            <div className="space-y-1">
+                              <p className="font-bold text-sm">{passwordChangeMsg.text}</p>
+                              {passwordChangeMsg.type === 'success' && (
+                                <p className="text-[11px] text-emerald-800">
+                                  ✅ আপনার বর্তমান ব্রাউজারে নতুন পাসওয়ার্ড সাথে সাথে কার্যকর হয়েছে।
+                                </p>
+                              )}
+                            </div>
                           </div>
+
+                          {passwordChangeMsg.type === 'success' && (
+                            <div className="mt-2 pt-3 border-t border-emerald-200 space-y-2.5 bg-white/90 p-3 rounded-xl border border-emerald-200">
+                              <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                                <Download className="w-4 h-4 text-emerald-700" />
+                                <span>📱 মোবাইল ও সকল ডিভাইসে চিরতরে স্থায়ী করার উপায়:</span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 leading-relaxed">
+                                যেহেতু amarmetro.com সাইটটি GitHub Pages দিয়ে হোস্ট করা, তাই মোবাইল বা অন্য ব্রাউজারে নতুন পাসওয়ার্ডটি স্বয়ংক্রিয়ভাবে পেতে নিচের বাটনে ক্লিক করে <strong>auth.json</strong> ফাইলটি ডাউনলোড করুন এবং আপনার লোকাল প্রজেক্ট ফোল্ডারে <code>data/auth.json</code> ফাইলে রিপ্লেস করে গিটহাবে পুশ (<code>git push origin main</code>) করে দিন।
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => downloadAuthJson(lastChangedHash)}
+                                  className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>📥 auth.json ডাউনলোড করুন</span>
+                                </button>
+                                {lastChangedHash && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(lastChangedHash);
+                                      setCopiedHash(true);
+                                      setTimeout(() => setCopiedHash(false), 3000);
+                                    }}
+                                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-slate-300 transition-colors"
+                                  >
+                                    {copiedHash ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                    <span>{copiedHash ? 'হ্যাশ কপি হয়েছে!' : 'হ্যাশ কপি করুন'}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2662,6 +2706,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed">
                         ⚠️ <strong>সতর্কতা:</strong> পাসওয়ার্ড সফলভাবে পরিবর্তনের সাথে সাথে পূর্বের ডেমো পাসওয়ার্ড চিরতরে বাতিল হয়ে যাবে। আপনি ছাড়া অন্য কোনো ব্যক্তি এটি অনুমান করতে পারবে না।
+                      </div>
+
+                      {/* Permanent Sync & Download Card */}
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>গিটহাব auth.json ফাইল ব্যাকআপ</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => downloadAuthJson()}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-md cursor-pointer flex items-center gap-1 transition-colors"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>auth.json ডাউনলোড</span>
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          মোবাইল বা যেকোনো নতুন ডিভাইসে পাসওয়ার্ড স্থায়ী রাখতে এই ফাইলটি ডাউনলোড করে আপনার লোকাল প্রজেক্টে <code>data/auth.json</code> ফাইলে সেভ করে গিটহাবে পুশ করুন।
+                        </p>
                       </div>
                     </div>
 
