@@ -92,10 +92,14 @@ export const BlogSection: React.FC<BlogSectionProps> = ({
           onClick={() => onSelectPost(featuredPost)}
           className="group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all cursor-pointer grid grid-cols-1 lg:grid-cols-12"
         >
-          <div className="lg:col-span-7 h-64 sm:h-80 lg:h-full relative overflow-hidden bg-slate-100">
+          <div className="lg:col-span-7 h-64 sm:h-80 lg:h-full relative overflow-hidden bg-slate-100 aspect-video lg:aspect-auto">
             <img
               src={featuredPost.coverImage}
               alt={featuredPost.title}
+              width={800}
+              height={450}
+              fetchPriority="high"
+              decoding="async"
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
           </div>
@@ -155,10 +159,14 @@ export const BlogSection: React.FC<BlogSectionProps> = ({
               className="group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer"
             >
               <div>
-                <div className="h-48 overflow-hidden bg-slate-100 relative">
+                <div className="h-48 overflow-hidden bg-slate-100 relative aspect-video">
                   <img
                     src={post.coverImage}
                     alt={post.title}
+                    width={400}
+                    height={225}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                 </div>
