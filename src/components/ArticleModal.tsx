@@ -213,6 +213,9 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
               <img
                 src={post.coverImage}
                 alt={post.title}
+                width={800}
+                height={450}
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             </div>
