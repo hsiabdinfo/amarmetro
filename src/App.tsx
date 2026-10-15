@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Navbar } from './components/Navbar.tsx';
 import { FareCalculator } from './components/FareCalculator.tsx';
-import { RouteMap } from './components/RouteMap.tsx';
-import { BusRoutesGuide } from './components/BusRoutesGuide.tsx';
-import { CivicAmenitiesGuide } from './components/CivicAmenitiesGuide.tsx';
 import { BlogSection } from './components/BlogSection.tsx';
-import { ArticleModal } from './components/ArticleModal.tsx';
-import { AdminPanel } from './components/AdminPanel.tsx';
-import { MrtPassGuide } from './components/MrtPassGuide.tsx';
-import { ScheduleInfo } from './components/ScheduleInfo.tsx';
 import { Footer } from './components/Footer.tsx';
 import { AdBanner } from './components/AdBanner.tsx';
+
+// Code-split heavy interactive modules for rapid initial page load & high PageSpeed score
+const RouteMap = lazy(() => import('./components/RouteMap.tsx').then((m) => ({ default: m.RouteMap })));
+const BusRoutesGuide = lazy(() => import('./components/BusRoutesGuide.tsx').then((m) => ({ default: m.BusRoutesGuide })));
+const CivicAmenitiesGuide = lazy(() => import('./components/CivicAmenitiesGuide.tsx').then((m) => ({ default: m.CivicAmenitiesGuide })));
+const MrtPassGuide = lazy(() => import('./components/MrtPassGuide.tsx').then((m) => ({ default: m.MrtPassGuide })));
+const ScheduleInfo = lazy(() => import('./components/ScheduleInfo.tsx').then((m) => ({ default: m.ScheduleInfo })));
+const ArticleModal = lazy(() => import('./components/ArticleModal.tsx').then((m) => ({ default: m.ArticleModal })));
+const AdminPanel = lazy(() => import('./components/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })));
 import defaultPostsData from '../data/posts.json';
 import { INITIAL_BLOG_POSTS } from './data/defaultPosts.ts';
 import { BlogPost } from './types/blog.ts';
@@ -26,6 +28,13 @@ import {
   Bus,
   Building2,
 } from 'lucide-react';
+
+const TabLoadingSkeleton = () => (
+  <div className="w-full min-h-[340px] flex flex-col items-center justify-center p-8 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+    <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+    <span className="text-xs font-semibold text-slate-500">লোড হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন</span>
+  </div>
+);
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -337,10 +346,14 @@ export default function App() {
                     className="group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
                   >
                     <div>
-                      <div className="h-44 overflow-hidden bg-slate-100">
+                      <div className="h-44 overflow-hidden bg-slate-100 aspect-[16/9]">
                         <img
                           src={post.coverImage}
                           alt={post.title}
+                          width={400}
+                          height={225}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                       </div>
@@ -372,25 +385,43 @@ export default function App() {
 
         {/* STATIONS TAB */}
         {currentTab === 'stations' && (
-          <RouteMap
-            lang={lang}
-            selectedStationId={selectedStationId}
-            onSetAsFrom={() => setCurrentTab('home')}
-            onSetAsTo={() => setCurrentTab('home')}
-          />
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <RouteMap
+              lang={lang}
+              selectedStationId={selectedStationId}
+              onSetAsFrom={() => setCurrentTab('home')}
+              onSetAsTo={() => setCurrentTab('home')}
+            />
+          </Suspense>
         )}
 
         {/* BUS ROUTES TAB */}
-        {currentTab === 'bus-routes' && <BusRoutesGuide lang={lang} />}
+        {currentTab === 'bus-routes' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <BusRoutesGuide lang={lang} />
+          </Suspense>
+        )}
 
         {/* CIVIC AMENITIES TAB */}
-        {currentTab === 'civic' && <CivicAmenitiesGuide lang={lang} />}
+        {currentTab === 'civic' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <CivicAmenitiesGuide lang={lang} />
+          </Suspense>
+        )}
 
         {/* TIMETABLE TAB */}
-        {currentTab === 'schedule' && <ScheduleInfo lang={lang} />}
+        {currentTab === 'schedule' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <ScheduleInfo lang={lang} />
+          </Suspense>
+        )}
 
         {/* PASS GUIDE TAB */}
-        {currentTab === 'pass' && <MrtPassGuide lang={lang} />}
+        {currentTab === 'pass' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <MrtPassGuide lang={lang} />
+          </Suspense>
+        )}
 
         {/* BLOG PORTAL TAB */}
         {currentTab === 'blog' && (
@@ -403,20 +434,28 @@ export default function App() {
       </main>
 
       {/* Reader Modal for Full Article */}
-      <ArticleModal
-        post={selectedPost}
-        onClose={() => setSelectedPost(null)}
-        lang={lang}
-      />
+      {selectedPost && (
+        <Suspense fallback={null}>
+          <ArticleModal
+            post={selectedPost}
+            onClose={() => setSelectedPost(null)}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {/* Dedicated Hidden Backend Admin / Login Panel (Accessible via /backend/login) */}
-      <AdminPanel
-        isOpen={isAdminOpen}
-        onClose={handleCloseAdmin}
-        posts={posts}
-        onRefreshPosts={fetchPosts}
-        lang={lang}
-      />
+      {isAdminOpen && (
+        <Suspense fallback={null}>
+          <AdminPanel
+            isOpen={isAdminOpen}
+            onClose={handleCloseAdmin}
+            posts={posts}
+            onRefreshPosts={fetchPosts}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {/* Footer (Public with discreet Admin link) */}
       <Footer
