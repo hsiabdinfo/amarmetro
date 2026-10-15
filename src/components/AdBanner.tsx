@@ -138,6 +138,10 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
               <img
                 src={slot.imageUrl}
                 alt={slot.title || 'Sponsor Ad'}
+                width={isLeaderboard ? 176 : 144}
+                height={isLeaderboard ? 80 : 112}
+                loading="lazy"
+                decoding="async"
                 className={`${
                   isLeaderboard ? 'w-full sm:w-44 h-24 sm:h-20' : 'w-full sm:w-36 h-28'
                 } object-cover rounded-xl border border-slate-200 shadow-2xs shrink-0`}
@@ -234,6 +238,10 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
               'https://images.unsplash.com/photo-1563013544-824ae1b704d3?auto=format&fit=crop&w=400&q=80'
             }
             alt="Ad Banner"
+            width={144}
+            height={112}
+            loading="lazy"
+            decoding="async"
             className="w-full sm:w-36 h-28 object-cover rounded-xl shadow-2xs shrink-0"
           />
           <div className="space-y-1.5 flex-1 text-center sm:text-left">
