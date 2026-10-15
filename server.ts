@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import compression from 'compression';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,10 +18,21 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
+// Enable Gzip/Brotli compression for all JSON, HTML, CSS, JS responses to boost PageSpeed
+app.use(compression());
+
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
-app.use('/uploads', express.static(UPLOADS_DIR));
-app.use('/fonts', express.static(path.join(__dirname, 'public', 'fonts')));
+
+// Long-term immutable caching for fonts and static uploads
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
+app.use(
+  '/fonts',
+  express.static(path.join(__dirname, 'public', 'fonts'), {
+    maxAge: '365d',
+    immutable: true,
+  })
+);
 
 // Helper to ensure data directory and file exist
 function getPosts() {
@@ -349,8 +361,30 @@ app.get('/api/status', (_req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    // Vite hashed static assets (immutable 1 year caching)
+    app.use(
+      '/assets',
+      express.static(path.join(__dirname, 'dist', 'assets'), {
+        maxAge: '365d',
+        immutable: true,
+      })
+    );
+
+    // General static files (1 day caching)
+    app.use(
+      express.static(path.join(__dirname, 'dist'), {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html')) {
+            // Never cache index.html so users get latest updates instantly
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
+
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   } else {
