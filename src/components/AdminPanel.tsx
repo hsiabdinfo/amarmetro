@@ -34,6 +34,10 @@ import {
   Megaphone,
   DollarSign,
   ExternalLink,
+  LayoutGrid,
+  Code,
+  Sliders,
+  Layers,
 } from 'lucide-react';
 import {
   verifyAdminPassword,
@@ -44,8 +48,9 @@ import {
   isSessionValid,
   getCustomSecretSlug,
   setCustomSecretSlug,
+  downloadAuthJson,
 } from '../utils/security.ts';
-import { AdConfig, DEFAULT_AD_CONFIG } from '../types/ad.ts';
+import { AdConfig, DEFAULT_AD_CONFIG, AD_SLOTS_DIRECTORY, AdSlotConfig, AdSlotMeta } from '../types/ad.ts';
 import { getAdConfig, saveAdConfig } from '../utils/ads.ts';
 
 interface AdminPanelProps {
@@ -79,6 +84,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [showChangePasswords, setShowChangePasswords] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordChangeMsg, setPasswordChangeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [lastChangedHash, setLastChangedHash] = useState<string>('');
+  const [copiedHash, setCopiedHash] = useState<boolean>(false);
   const [customSlug, setCustomSlug] = useState(() => getCustomSecretSlug());
   const [slugSavedMsg, setSlugSavedMsg] = useState('');
 
@@ -88,7 +95,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Ads & AdSense Management State
   const [adConfig, setAdConfig] = useState<AdConfig>(DEFAULT_AD_CONFIG);
-  const [adSubTab, setAdSubTab] = useState<'adsense' | 'leaderboard' | 'inArticle' | 'guide'>('adsense');
+  const [adSubTab, setAdSubTab] = useState<'tabs' | 'adsense' | 'leaderboard' | 'inArticle' | 'guide'>('tabs');
+  const [selectedAdTabFilter, setSelectedAdTabFilter] = useState<string>('all');
+  const [activeSlotEditor, setActiveSlotEditor] = useState<string | null>(null);
   const [isSavingAds, setIsSavingAds] = useState(false);
   const [adSaveMsg, setAdSaveMsg] = useState('');
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
@@ -350,6 +359,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsChangingPassword(false);
     if (res.success) {
       setPasswordChangeMsg({ type: 'success', text: res.message });
+      if (res.newHash) {
+        setLastChangedHash(res.newHash);
+      }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -407,19 +419,100 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleUploadAdImage = async (slotKey: 'leaderboard' | 'inArticle', file: File) => {
+  const handleUpdateSlot = (slotKey: string, updates: Partial<AdSlotConfig>) => {
+    setAdConfig((prev) => {
+      const currentSlot = prev.slots?.[slotKey] || { enabled: true, type: 'default' };
+      return {
+        ...prev,
+        slots: {
+          ...prev.slots,
+          [slotKey]: {
+            ...currentSlot,
+            ...updates,
+          },
+        },
+      };
+    });
+  };
+
+  const handleExtractAdSenseCode = (slotKey: string, code: string) => {
+    const clientMatch =
+      code.match(/data-ad-client=["']([^"']+)["']/i) ||
+      code.match(/client=([ca-pub-\d]+)/i);
+    const slotMatch = code.match(/data-ad-slot=["']([^"']+)["']/i);
+
+    setAdConfig((prev) => {
+      const currentSlot = prev.slots?.[slotKey] || { enabled: true, type: 'google-adsense' };
+      const newClient = clientMatch ? clientMatch[1] : (currentSlot.adClient || prev.googleAdSense?.publisherId || '');
+      const newSlot = slotMatch ? slotMatch[1] : (currentSlot.adSlot || '');
+      return {
+        ...prev,
+        slots: {
+          ...prev.slots,
+          [slotKey]: {
+            ...currentSlot,
+            type: 'google-adsense',
+            adCode: code,
+            adClient: newClient,
+            adSlot: newSlot,
+          },
+        },
+      };
+    });
+  };
+
+  const handleActivateAllAdSenseSlots = () => {
+    const pubId = adConfig.googleAdSense?.publisherId || '';
+    setAdConfig((prev) => {
+      const updatedSlots = { ...(prev.slots || {}) };
+      AD_SLOTS_DIRECTORY.forEach((meta) => {
+        const cur = updatedSlots[meta.key] || { enabled: true };
+        updatedSlots[meta.key] = {
+          ...cur,
+          enabled: true,
+          type: 'google-adsense',
+          adClient: cur.adClient || pubId,
+        };
+      });
+      return {
+        ...prev,
+        slots: updatedSlots,
+      };
+    });
+    showNotification(
+      'success',
+      lang === 'bn'
+        ? 'সকল পেজের ১৬টি স্লটেই গুগল অ্যাডসেন্স মোড সক্রিয় করা হয়েছে!'
+        : 'Google AdSense mode activated for all 16 slots across all pages!'
+    );
+  };
+
+  const handleUploadSlotImage = async (slotKey: string, file: File) => {
     setIsUploadingAdImage(true);
     try {
       const url = await compressAndProcessImage(file);
       if (url) {
-        setAdConfig((prev) => ({
-          ...prev,
-          [slotKey]: {
-            ...prev[slotKey],
-            imageUrl: url,
-          },
-        }));
-        showNotification('success', lang === 'bn' ? 'ব্যানার ছবি সফলভাবে আপলোড ও যুক্ত হয়েছে' : 'Banner image uploaded');
+        if (slotKey === 'leaderboard' || slotKey === 'inArticle') {
+          setAdConfig((prev) => ({
+            ...prev,
+            [slotKey]: {
+              ...prev[slotKey],
+              imageUrl: url,
+            },
+          }));
+        } else {
+          setAdConfig((prev) => ({
+            ...prev,
+            slots: {
+              ...prev.slots,
+              [slotKey]: {
+                ...(prev.slots?.[slotKey] || { enabled: true, type: 'custom' }),
+                imageUrl: url,
+              },
+            },
+          }));
+        }
+        showNotification('success', lang === 'bn' ? 'ব্যানার ছবি সফলভাবে আপলোড হয়েছে' : 'Banner image uploaded');
       }
     } catch (e) {
       showNotification('error', lang === 'bn' ? 'ছবি আপলোডে সমস্যা হয়েছে' : 'Image upload failed');
@@ -427,6 +520,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsUploadingAdImage(false);
     }
   };
+
+  const handleUploadAdImage = handleUploadSlotImage;
 
   const handleDownloadAdsJson = () => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(adConfig, null, 2));
@@ -1712,6 +1807,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
                     <button
                       type="button"
+                      onClick={() => setAdSubTab('tabs')}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        adSubTab === 'tabs'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{lang === 'bn' ? '১. ট্যাব ভিত্তিক বিজ্ঞাপন (প্রতি পাতায় ২টি স্লট)' : '1. Tab Ad Slots (2 Per Page)'}</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => setAdSubTab('adsense')}
                       className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         adSubTab === 'adsense'
@@ -1720,7 +1828,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       }`}
                     >
                       <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{lang === 'bn' ? '১. গুগল অ্যাডসেন্স সেটিংস' : '1. Google AdSense'}</span>
+                      <span>{lang === 'bn' ? '২. গুগল অ্যাডসেন্স মূল অ্যাকাউন্ট ও অটো এডস' : '2. AdSense Account & Auto Ads'}</span>
                     </button>
 
                     <button
@@ -1733,7 +1841,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       }`}
                     >
                       <FileText className="w-3.5 h-3.5 text-blue-400" />
-                      <span>{lang === 'bn' ? '২. হোমপেজ লিডারবোর্ড ব্যানার' : '2. Leaderboard Banner'}</span>
+                      <span>{lang === 'bn' ? '৩. হোমপেজ কুইক ব্যানার' : '3. Quick Home Banner'}</span>
                     </button>
 
                     <button
@@ -1746,7 +1854,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       }`}
                     >
                       <FileText className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{lang === 'bn' ? '৩. আর্টিকেল ভিতরের ব্যানার' : '3. In-Article Ad'}</span>
+                      <span>{lang === 'bn' ? '৪. আর্টিকেল কুইক ব্যানার' : '4. Quick Article Banner'}</span>
                     </button>
 
                     <button
@@ -1759,9 +1867,435 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       }`}
                     >
                       <HelpCircle className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{lang === 'bn' ? '৪. অ্যাডসেন্স ও কাস্টম এড নির্দেশিকা' : '4. How-To Guide'}</span>
+                      <span>{lang === 'bn' ? '৫. অ্যাডসেন্স গাইড ও নির্দেশিকা' : '5. AdSense Guide'}</span>
                     </button>
                   </div>
+
+                  {/* Sub-Tab 1: Tab-Based Ad Slots (At least 2 per page) */}
+                  {adSubTab === 'tabs' && (
+                    <div className="space-y-6">
+                      {/* Top Action & Instructions Banner */}
+                      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 text-white p-5 sm:p-6 rounded-2xl border border-emerald-900/60 shadow-xs space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                              <LayoutGrid className="w-3.5 h-3.5" />
+                              <span>{lang === 'bn' ? 'ট্যাব ভিত্তিক বিজ্ঞাপন স্থান (৮টি পেজ · ১৬টি স্লট)' : 'Tab-Based Ad Placements (8 Pages · 16 Slots)'}</span>
+                            </div>
+                            <h5 className="font-extrabold text-base sm:text-lg text-white">
+                              {lang === 'bn'
+                                ? 'প্রতিটি পেজে সুবিধাজনক অবস্থানে কমপক্ষে ২টি গুগল অ্যাডসেন্স কোড যোগ করার সুযোগ'
+                                : 'Configure at least 2 Google AdSense codes for every page and tab'}
+                            </h5>
+                            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                              {lang === 'bn'
+                                ? 'হোমপেজ, স্টেশন রুট ম্যাপ, বাস রুট, সময়সূচী, এমআরটি পাস, নাগরিক সেবা, ব্লগ ও আর্টিকেল প্রতিটিতে ২টি করে বিজ্ঞাপন স্লট সাজানো আছে। প্রতিটি স্লটে গুগল অ্যাডসেন্স কোড পেস্ট করুন অথবা কাস্টম স্পনসর ব্যানার সেট করুন।'
+                                : 'Each page has 2 dedicated high-visibility ad placements. Paste your Google AdSense snippet code or configure custom partner banners.'}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={handleActivateAllAdSenseSlots}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center gap-1.5 active:scale-98"
+                              title="সকল স্লটে গুগল অ্যাডসেন্স মোড সক্রিয় করতে ক্লিক করুন"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>{lang === 'bn' ? '⚡ সব স্লটে AdSense চালু করুন' : '⚡ Enable AdSense on All Slots'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Page Filter Tabs */}
+                        <div className="pt-3 border-t border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                          {[
+                            { id: 'all', label: 'সকল পাতা (১৬টি স্লট)' },
+                            { id: 'home', label: '১. হোম পেজ (২টি)' },
+                            { id: 'stations', label: '২. স্টেশন ও ম্যাপ (২টি)' },
+                            { id: 'bus-routes', label: '৩. বাস রুট (২টি)' },
+                            { id: 'schedule', label: '৪. সময়সূচী (২টি)' },
+                            { id: 'pass', label: '৫. এমআরটি পাস (২টি)' },
+                            { id: 'civic', label: '৬. নাগরিক সেবা (২টি)' },
+                            { id: 'blog', label: '৭. মেট্রো ব্লগ (২টি)' },
+                            { id: 'article', label: '৮. আর্টিকেল ভিউ (২টি)' },
+                          ].map((tab) => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              onClick={() => setSelectedAdTabFilter(tab.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                                selectedAdTabFilter === tab.id
+                                  ? 'bg-emerald-500 text-slate-950 shadow-xs'
+                                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Filtered Slots Grid */}
+                      <div className="space-y-6">
+                        {AD_SLOTS_DIRECTORY.filter(
+                          (meta) => selectedAdTabFilter === 'all' || meta.tab === selectedAdTabFilter
+                        ).map((meta, index) => {
+                          const slot = adConfig.slots?.[meta.key] || {
+                            enabled: true,
+                            type: 'default',
+                            badge: 'বিজ্ঞাপন',
+                            title: `${meta.tabLabelBn} বিজ্ঞাপন`,
+                            description: '',
+                          };
+                          const pubId = slot.adClient || adConfig.googleAdSense?.publisherId || '';
+                          const isGoogle = slot.type === 'google-adsense';
+                          const isCustom = slot.type === 'custom';
+                          const isDefault = slot.type === 'default';
+
+                          return (
+                            <div
+                              key={meta.key}
+                              className={`bg-white rounded-2xl border transition-all shadow-xs ${
+                                slot.enabled ? 'border-slate-200' : 'border-slate-200/60 opacity-60 bg-slate-50/50'
+                              }`}
+                            >
+                              {/* Slot Card Header */}
+                              <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50 rounded-t-2xl">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                                    #{index + 1}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-900">
+                                        {meta.tabLabelBn}
+                                      </span>
+                                      <span className="text-slate-300">·</span>
+                                      <span className="text-xs font-semibold text-emerald-700">
+                                        {meta.slotLabelBn}
+                                      </span>
+                                    </div>
+                                    <span className="text-[11px] font-mono text-slate-400">
+                                      Key: {meta.key} | Position: {meta.position}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 self-end sm:self-auto">
+                                  {/* Status Tag */}
+                                  {slot.enabled ? (
+                                    isGoogle ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                        <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                        <span>AdSense {slot.adSlot ? `#${slot.adSlot}` : '(Slot ID দিন)'}</span>
+                                      </span>
+                                    ) : isCustom ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
+                                        <Megaphone className="w-3 h-3 text-blue-600" />
+                                        <span>কাস্টম স্পনসর</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                        <span>ডিফল্ট মেট্রো তথ্য</span>
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                                      <span>বন্ধ (Disabled)</span>
+                                    </span>
+                                  )}
+
+                                  {/* Enable/Disable Switch */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSlot(meta.key, { enabled: !slot.enabled })}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                      slot.enabled
+                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                    }`}
+                                  >
+                                    {slot.enabled ? (lang === 'bn' ? 'চালু আছে' : 'Active') : (lang === 'bn' ? 'বন্ধ আছে' : 'Inactive')}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Slot Body Controls */}
+                              {slot.enabled && (
+                                <div className="p-4 sm:p-6 space-y-5">
+                                  {/* Mode Selector */}
+                                  <div>
+                                    <label className="text-xs font-bold text-slate-700 block mb-2">
+                                      {lang === 'bn' ? 'বিজ্ঞাপনের ধরন নির্বাচন করুন:' : 'Select Ad Type:'}
+                                    </label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSlot(meta.key, { type: 'google-adsense' })}
+                                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                                          isGoogle
+                                            ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        <DollarSign className={`w-4 h-4 ${isGoogle ? 'text-emerald-600' : 'text-slate-400'}`} />
+                                        <div>
+                                          <span className="text-xs font-bold text-slate-900 block">
+                                            গুগল অ্যাডসেন্স (AdSense)
+                                          </span>
+                                          <span className="text-[10px] text-slate-500 block">
+                                            কোড পেস্ট বা Slot ID বসান
+                                          </span>
+                                        </div>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSlot(meta.key, { type: 'custom' })}
+                                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                                          isCustom
+                                            ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/20'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        <Megaphone className={`w-4 h-4 ${isCustom ? 'text-blue-600' : 'text-slate-400'}`} />
+                                        <div>
+                                          <span className="text-xs font-bold text-slate-900 block">
+                                            কাস্টম স্পনসর ব্যানার
+                                          </span>
+                                          <span className="text-[10px] text-slate-500 block">
+                                            ছবি, শিরোনাম ও লিংক
+                                          </span>
+                                        </div>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSlot(meta.key, { type: 'default' })}
+                                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                                          isDefault
+                                            ? 'border-slate-900 bg-slate-100 ring-2 ring-slate-900/10'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        <Sparkles className={`w-4 h-4 ${isDefault ? 'text-slate-900' : 'text-slate-400'}`} />
+                                        <div>
+                                          <span className="text-xs font-bold text-slate-900 block">
+                                            ডিফল্ট মেট্রো তথ্য
+                                          </span>
+                                          <span className="text-[10px] text-slate-500 block">
+                                            সুন্দর ট্রানজিট পার্টনার ব্যানার
+                                          </span>
+                                        </div>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* 1. Google AdSense Form */}
+                                  {isGoogle && (
+                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                                      {/* Snippet Box */}
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                            <Code className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>
+                                              {lang === 'bn'
+                                                ? 'গুগল অ্যাডসেন্স কোড পেস্ট করুন (সম্পূর্ণ কোড এখানে পেস্ট করলেই অটো সনাক্ত হবে)'
+                                                : 'Paste Google AdSense Code Snippet:'}
+                                            </span>
+                                          </label>
+                                          {slot.adSlot && (
+                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                              ✓ সনাক্ত হয়েছে
+                                            </span>
+                                          )}
+                                        </div>
+                                        <textarea
+                                          rows={3}
+                                          value={slot.adCode || ''}
+                                          onChange={(e) => handleExtractAdSenseCode(meta.key, e.target.value)}
+                                          placeholder={`Google AdSense এর By ad unit থেকে পাওয়া কোডটি পেস্ট করুন। যেমন:\n<ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-..." data-ad-slot="..."></ins>`}
+                                          className="w-full text-xs font-mono p-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                                        />
+                                        <p className="text-[11px] text-slate-500 mt-1">
+                                          💡 কোড পেস্ট করলেই নিচের Publisher ID ও Slot ID স্বয়ংক্রিয়ভাবে পূরণ হয়ে যাবে।
+                                        </p>
+                                      </div>
+
+                                      {/* Manual Fields */}
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                                        <div>
+                                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                            Ad Client (Publisher ID):
+                                          </label>
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="text"
+                                              value={slot.adClient || ''}
+                                              onChange={(e) => handleUpdateSlot(meta.key, { adClient: e.target.value })}
+                                              placeholder={adConfig.googleAdSense?.publisherId || 'ca-pub-1234567890123456'}
+                                              className="w-full text-xs font-mono p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                                            />
+                                            {adConfig.googleAdSense?.publisherId && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleUpdateSlot(meta.key, {
+                                                    adClient: adConfig.googleAdSense.publisherId,
+                                                  })
+                                                }
+                                                className="px-2 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[10px] font-bold whitespace-nowrap cursor-pointer"
+                                                title="গ্লোবাল Publisher ID বসান"
+                                              >
+                                                গ্লোবাল ID
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                            Ad Slot ID (গুগল অ্যাডসেন্স স্লট আইডি) *:
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={slot.adSlot || ''}
+                                            onChange={(e) => handleUpdateSlot(meta.key, { adSlot: e.target.value })}
+                                            placeholder="যেমন: 1234567890"
+                                            className="w-full text-xs font-mono p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* 2. Custom Sponsor Form */}
+                                  {isCustom && (
+                                    <div className="p-4 bg-blue-50/40 rounded-xl border border-blue-200/80 space-y-4">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                            বিজ্ঞাপনের শিরোনাম (Headline) *:
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={slot.title || ''}
+                                            onChange={(e) => handleUpdateSlot(meta.key, { title: e.target.value })}
+                                            placeholder="যেমন: স্মার্ট ট্রানজিট কার্ড রিচার্জ সার্ভিস"
+                                            className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                            বিজ্ঞাপন ব্যাজ (Badge):
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={slot.badge || ''}
+                                            onChange={(e) => handleUpdateSlot(meta.key, { badge: e.target.value })}
+                                            placeholder="যেমন: স্পনসরড পার্টনার / বিজ্ঞাপন"
+                                            className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                          বিজ্ঞাপনের বিবরণ (Description):
+                                        </label>
+                                        <textarea
+                                          rows={2}
+                                          value={slot.description || ''}
+                                          onChange={(e) => handleUpdateSlot(meta.key, { description: e.target.value })}
+                                          placeholder="বিজ্ঞাপনের বার্তা বা অফার সম্পর্কে লিখুন..."
+                                          className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                                        />
+                                      </div>
+
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                            বিজ্ঞাপনের লিংক URL (Target Link):
+                                          </label>
+                                          <input
+                                            type="url"
+                                            value={slot.targetUrl || ''}
+                                            onChange={(e) => handleUpdateSlot(meta.key, { targetUrl: e.target.value })}
+                                            placeholder="https://client-website.com"
+                                            className="w-full text-xs font-mono p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                            বাটন টেক্সট (CTA):
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={slot.ctaText || ''}
+                                            onChange={(e) => handleUpdateSlot(meta.key, { ctaText: e.target.value })}
+                                            placeholder="যেমন: বিস্তারিত দেখুন / অফারটি নিন"
+                                            className="w-full text-xs p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Banner Image URL / Upload */}
+                                      <div>
+                                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                                          ব্যানার ইমেজ URL (অথবা আপলোড করুন):
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="text"
+                                            value={slot.imageUrl || ''}
+                                            onChange={(e) => handleUpdateSlot(meta.key, { imageUrl: e.target.value })}
+                                            placeholder="https://... অথবা কম্পিউটার থেকে আপলোড করুন"
+                                            className="w-full text-xs font-mono p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                                          />
+                                          <label className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shrink-0 flex items-center gap-1">
+                                            <Upload className="w-3.5 h-3.5" />
+                                            <span>আপলোড</span>
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleUploadSlotImage(meta.key, file);
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* 3. Default Metro Banner Preview */}
+                                  {isDefault && (
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-emerald-600" />
+                                        <span>
+                                          এই স্লটে স্বয়ংক্রিয়ভাবে amarmetro.com এর ঢাকা মেট্রো ও ট্রানজিট ইনফরমেশন ব্যানার প্রদর্শিত হবে।
+                                        </span>
+                                      </div>
+                                      <span className="text-[11px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">
+                                        Clean & Verified
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Sub-Tab 1: Google AdSense Global Settings */}
                   {adSubTab === 'adsense' && (
@@ -2552,25 +3086,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {passwordChangeMsg && (
                         <div
-                          className={`p-3.5 rounded-xl text-xs font-medium flex items-start gap-2.5 ${
+                          className={`p-4 rounded-xl text-xs font-medium space-y-3 ${
                             passwordChangeMsg.type === 'success'
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
                               : 'bg-rose-50 text-rose-800 border border-rose-200'
                           }`}
                         >
-                          {passwordChangeMsg.type === 'success' ? (
-                            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          ) : (
-                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                          )}
-                          <div className="space-y-1">
-                            <p>{passwordChangeMsg.text}</p>
-                            {passwordChangeMsg.type === 'success' && (
-                              <p className="text-[11px] text-emerald-700 font-semibold">
-                                ℹ️ নতুন পাসওয়ার্ডটি মনে রাখুন অথবা নিরাপদ স্থানে লিখে রাখুন।
-                              </p>
+                          <div className="flex items-start gap-2.5">
+                            {passwordChangeMsg.type === 'success' ? (
+                              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                             )}
+                            <div className="space-y-1">
+                              <p className="font-bold text-sm">{passwordChangeMsg.text}</p>
+                              {passwordChangeMsg.type === 'success' && (
+                                <p className="text-[11px] text-emerald-800">
+                                  ✅ আপনার বর্তমান ব্রাউজারে নতুন পাসওয়ার্ড সাথে সাথে কার্যকর হয়েছে।
+                                </p>
+                              )}
+                            </div>
                           </div>
+
+                          {passwordChangeMsg.type === 'success' && (
+                            <div className="mt-2 pt-3 border-t border-emerald-200 space-y-2.5 bg-white/90 p-3 rounded-xl border border-emerald-200">
+                              <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                                <Download className="w-4 h-4 text-emerald-700" />
+                                <span>📱 মোবাইল ও সকল ডিভাইসে চিরতরে স্থায়ী করার উপায়:</span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 leading-relaxed">
+                                যেহেতু amarmetro.com সাইটটি GitHub Pages দিয়ে হোস্ট করা, তাই মোবাইল বা অন্য ব্রাউজারে নতুন পাসওয়ার্ডটি স্বয়ংক্রিয়ভাবে পেতে নিচের বাটনে ক্লিক করে <strong>auth.json</strong> ফাইলটি ডাউনলোড করুন এবং আপনার লোকাল প্রজেক্ট ফোল্ডারে <code>data/auth.json</code> ফাইলে রিপ্লেস করে গিটহাবে পুশ (<code>git push origin main</code>) করে দিন।
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => downloadAuthJson(lastChangedHash)}
+                                  className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>📥 auth.json ডাউনলোড করুন</span>
+                                </button>
+                                {lastChangedHash && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(lastChangedHash);
+                                      setCopiedHash(true);
+                                      setTimeout(() => setCopiedHash(false), 3000);
+                                    }}
+                                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-slate-300 transition-colors"
+                                  >
+                                    {copiedHash ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                    <span>{copiedHash ? 'হ্যাশ কপি হয়েছে!' : 'হ্যাশ কপি করুন'}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2662,6 +3234,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed">
                         ⚠️ <strong>সতর্কতা:</strong> পাসওয়ার্ড সফলভাবে পরিবর্তনের সাথে সাথে পূর্বের ডেমো পাসওয়ার্ড চিরতরে বাতিল হয়ে যাবে। আপনি ছাড়া অন্য কোনো ব্যক্তি এটি অনুমান করতে পারবে না।
+                      </div>
+
+                      {/* Permanent Sync & Download Card */}
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>গিটহাব auth.json ফাইল ব্যাকআপ</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => downloadAuthJson()}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-md cursor-pointer flex items-center gap-1 transition-colors"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>auth.json ডাউনলোড</span>
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          মোবাইল বা যেকোনো নতুন ডিভাইসে পাসওয়ার্ড স্থায়ী রাখতে এই ফাইলটি ডাউনলোড করে আপনার লোকাল প্রজেক্টে <code>data/auth.json</code> ফাইলে সেভ করে গিটহাবে পুশ করুন।
+                        </p>
                       </div>
                     </div>
 

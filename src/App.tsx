@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Navbar } from './components/Navbar.tsx';
 import { FareCalculator } from './components/FareCalculator.tsx';
-import { RouteMap } from './components/RouteMap.tsx';
-import { BusRoutesGuide } from './components/BusRoutesGuide.tsx';
-import { CivicAmenitiesGuide } from './components/CivicAmenitiesGuide.tsx';
 import { BlogSection } from './components/BlogSection.tsx';
-import { ArticleModal } from './components/ArticleModal.tsx';
-import { AdminPanel } from './components/AdminPanel.tsx';
-import { MrtPassGuide } from './components/MrtPassGuide.tsx';
-import { ScheduleInfo } from './components/ScheduleInfo.tsx';
 import { Footer } from './components/Footer.tsx';
 import { AdBanner } from './components/AdBanner.tsx';
+
+// Code-split heavy interactive modules for rapid initial page load & high PageSpeed score
+const RouteMap = lazy(() => import('./components/RouteMap.tsx').then((m) => ({ default: m.RouteMap })));
+const BusRoutesGuide = lazy(() => import('./components/BusRoutesGuide.tsx').then((m) => ({ default: m.BusRoutesGuide })));
+const CivicAmenitiesGuide = lazy(() => import('./components/CivicAmenitiesGuide.tsx').then((m) => ({ default: m.CivicAmenitiesGuide })));
+const MrtPassGuide = lazy(() => import('./components/MrtPassGuide.tsx').then((m) => ({ default: m.MrtPassGuide })));
+const ScheduleInfo = lazy(() => import('./components/ScheduleInfo.tsx').then((m) => ({ default: m.ScheduleInfo })));
+const ArticleModal = lazy(() => import('./components/ArticleModal.tsx').then((m) => ({ default: m.ArticleModal })));
+const AdminPanel = lazy(() => import('./components/AdminPanel.tsx').then((m) => ({ default: m.AdminPanel })));
 import defaultPostsData from '../data/posts.json';
 import { INITIAL_BLOG_POSTS } from './data/defaultPosts.ts';
 import { BlogPost } from './types/blog.ts';
@@ -25,7 +27,18 @@ import {
   Zap,
   Bus,
   Building2,
+  Link as LinkIcon,
+  Check,
+  Copy,
+  Share2,
 } from 'lucide-react';
+
+const TabLoadingSkeleton = () => (
+  <div className="w-full min-h-[340px] flex flex-col items-center justify-center p-8 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+    <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+    <span className="text-xs font-semibold text-slate-500">লোড হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন</span>
+  </div>
+);
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -35,6 +48,62 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [selectedStationId, setSelectedStationId] = useState<string>('motijheel');
+  const [copiedHomePostId, setCopiedHomePostId] = useState<string | null>(null);
+
+  // Synchronize Tab Changes with Clean History State
+  const handleTabChange = (tab: string) => {
+    setCurrentTab(tab);
+    if (selectedPost) {
+      setSelectedPost(null);
+    }
+    const cleanUrl = tab === 'home' ? '/' : `?tab=${encodeURIComponent(tab)}`;
+    window.history.pushState({}, '', cleanUrl);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Open Blog Post with Direct Permalink in URL
+  const handleOpenPost = (post: BlogPost) => {
+    setSelectedPost(post);
+    const slug = post.slug || post.id;
+    const newUrl = `?post=${encodeURIComponent(slug)}`;
+    window.history.pushState({ postId: post.id }, '', newUrl);
+    document.title = `${post.title} | Amar Metro - আমার মেট্রো`;
+  };
+
+  // Close Article Reader and Restore URL
+  const handleClosePost = () => {
+    setSelectedPost(null);
+    const cleanUrl = currentTab === 'home' ? '/' : `?tab=${encodeURIComponent(currentTab)}`;
+    window.history.pushState({}, '', cleanUrl);
+    document.title = 'Amar Metro - আমার মেট্রো | ঢাকা মেট্রো রেল গাইড, ভাড়া ও ব্লগ';
+  };
+
+  // Quick Copy / Share Permalink on Homepage Card
+  const handleCopyHomePermalink = async (e: React.MouseEvent, post: BlogPost) => {
+    e.stopPropagation();
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://amarmetro.com';
+    const rawPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+    const cleanPath = rawPath.endsWith('/') ? rawPath : `${rawPath}/`;
+    const permalink = `${origin}${cleanPath}?post=${encodeURIComponent(post.slug || post.id)}`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${post.title} | Amar Metro - আমার মেট্রো`,
+          text: post.excerpt,
+          url: permalink,
+        });
+        return;
+      } catch (err) {
+        // Fallback to clipboard
+      }
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(permalink);
+      setCopiedHomePostId(post.id);
+      setTimeout(() => setCopiedHomePostId(null), 2500);
+    }
+  };
 
   // Check URL pathname, hash, or query for admin path (e.g. /backend/login, #login, #admin, or custom secret slug)
   useEffect(() => {
@@ -72,6 +141,48 @@ export default function App() {
       window.removeEventListener('hashchange', checkAdminPath);
     };
   }, []);
+
+  // Handle URL Permalinks (?post=<slug>, ?tab=<tab>, #post/<slug>, #<tab>)
+  useEffect(() => {
+    const handleUrlRouting = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash || '';
+
+      // Check tab param
+      const tabParam = urlParams.get('tab');
+      if (tabParam && ['home', 'stations', 'bus-routes', 'schedule', 'pass', 'civic', 'blog'].includes(tabParam)) {
+        setCurrentTab(tabParam);
+      } else if (hash.startsWith('#tab/')) {
+        const hashTab = hash.replace('#tab/', '').toLowerCase();
+        if (['home', 'stations', 'bus-routes', 'schedule', 'pass', 'civic', 'blog'].includes(hashTab)) {
+          setCurrentTab(hashTab);
+        }
+      }
+
+      // Check post permalink param
+      let postParam = urlParams.get('post');
+      if (!postParam && (hash.startsWith('#post/') || hash.startsWith('#article/'))) {
+        postParam = hash.replace(/^#(post|article)\//, '');
+      }
+
+      if (postParam && posts.length > 0) {
+        const decodedParam = decodeURIComponent(postParam).toLowerCase();
+        const found = posts.find(
+          (p) =>
+            (p.slug && p.slug.toLowerCase() === decodedParam) ||
+            p.id.toLowerCase() === decodedParam
+        );
+        if (found) {
+          setSelectedPost(found);
+          document.title = `${found.title} | Amar Metro - আমার মেট্রো`;
+        }
+      }
+    };
+
+    handleUrlRouting();
+    window.addEventListener('popstate', handleUrlRouting);
+    return () => window.removeEventListener('popstate', handleUrlRouting);
+  }, [posts]);
 
   // Global secret keyboard shortcut: Ctrl+Shift+A or Ctrl+Shift+L to toggle Admin Panel
   useEffect(() => {
@@ -150,7 +261,7 @@ export default function App() {
       {/* Header Navigation (Public - No Admin Link) */}
       <Navbar
         currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
+        setCurrentTab={handleTabChange}
         lang={lang}
         setLang={setLang}
       />
@@ -193,7 +304,7 @@ export default function App() {
                 {/* Quick CTAs (Public Transit Links Only) */}
                 <div className="pt-2 flex flex-wrap items-center gap-3">
                   <button
-                    onClick={() => setCurrentTab('stations')}
+                    onClick={() => handleTabChange('stations')}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all shadow-md cursor-pointer"
                   >
                     <Train className="w-4 h-4" />
@@ -201,7 +312,7 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setCurrentTab('bus-routes')}
+                    onClick={() => handleTabChange('bus-routes')}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold text-sm transition-all cursor-pointer backdrop-blur-xs"
                   >
                     <Bus className="w-4 h-4 text-emerald-400" />
@@ -209,7 +320,7 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setCurrentTab('civic')}
+                    onClick={() => handleTabChange('civic')}
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold text-sm transition-all cursor-pointer backdrop-blur-xs"
                   >
                     <Building2 className="w-4 h-4 text-emerald-400" />
@@ -217,7 +328,7 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setCurrentTab('blog')}
+                    onClick={() => handleTabChange('blog')}
                     className="inline-flex items-center gap-1.5 px-4 py-2.5 text-slate-300 hover:text-white font-medium text-sm transition-colors cursor-pointer"
                   >
                     <span>{lang === 'bn' ? 'মেট্রো ব্লগ' : 'Read Blog'}</span>
@@ -253,8 +364,8 @@ export default function App() {
               onSelectStation={handleStationClickFromMap}
             />
 
-            {/* Responsive Leaderboard Advertisement Slot (Google AdSense / Sponsor) */}
-            <AdBanner format="leaderboard" />
+            {/* Responsive Leaderboard Advertisement Slot 1: Home Top */}
+            <AdBanner slotKey="home-top" format="leaderboard" label="হোম পেজ ব্যানার ১" />
 
             {/* Metropolitan Feature Highlight Strip */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -321,7 +432,7 @@ export default function App() {
                 </div>
 
                 <button
-                  onClick={() => setCurrentTab('blog')}
+                  onClick={() => handleTabChange('blog')}
                   className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
                 >
                   <span>{lang === 'bn' ? 'সকল পোস্ট দেখুন' : 'View All'}</span>
@@ -333,14 +444,18 @@ export default function App() {
                 {posts.slice(0, 3).map((post) => (
                   <article
                     key={post.id}
-                    onClick={() => setSelectedPost(post)}
+                    onClick={() => handleOpenPost(post)}
                     className="group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
                   >
                     <div>
-                      <div className="h-44 overflow-hidden bg-slate-100">
+                      <div className="h-44 overflow-hidden bg-slate-100 aspect-[16/9]">
                         <img
                           src={post.coverImage}
                           alt={post.title}
+                          width={400}
+                          height={225}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                       </div>
@@ -358,7 +473,26 @@ export default function App() {
                         </p>
                       </div>
                     </div>
-                    <div className="p-5 pt-0 text-right">
+                    <div className="p-5 pt-0 border-t border-slate-50 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyHomePermalink(e, post)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 transition-colors text-[11px] font-semibold cursor-pointer"
+                        title="পোস্টের পার্মালিংক কপি বা শেয়ার করুন"
+                      >
+                        {copiedHomePostId === post.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-700">কপি হয়েছে!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="w-3 h-3 text-slate-400" />
+                            <span>শেয়ার</span>
+                          </>
+                        )}
+                      </button>
+
                       <span className="text-xs font-semibold text-emerald-700 group-hover:translate-x-1 inline-flex items-center gap-1 transition-transform">
                         {lang === 'bn' ? 'পড়ুন' : 'Read'} →
                       </span>
@@ -366,62 +500,91 @@ export default function App() {
                   </article>
                 ))}
               </div>
+
+              {/* Responsive Leaderboard Advertisement Slot 2: Home Bottom */}
+              <AdBanner slotKey="home-bottom" format="leaderboard" label="হোম পেজ ব্যানার ২" className="mt-8" />
             </div>
           </div>
         )}
 
         {/* STATIONS TAB */}
         {currentTab === 'stations' && (
-          <RouteMap
-            lang={lang}
-            selectedStationId={selectedStationId}
-            onSetAsFrom={() => setCurrentTab('home')}
-            onSetAsTo={() => setCurrentTab('home')}
-          />
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <RouteMap
+              lang={lang}
+              selectedStationId={selectedStationId}
+              onSetAsFrom={() => handleTabChange('home')}
+              onSetAsTo={() => handleTabChange('home')}
+            />
+          </Suspense>
         )}
 
         {/* BUS ROUTES TAB */}
-        {currentTab === 'bus-routes' && <BusRoutesGuide lang={lang} />}
+        {currentTab === 'bus-routes' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <BusRoutesGuide lang={lang} />
+          </Suspense>
+        )}
 
         {/* CIVIC AMENITIES TAB */}
-        {currentTab === 'civic' && <CivicAmenitiesGuide lang={lang} />}
+        {currentTab === 'civic' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <CivicAmenitiesGuide lang={lang} />
+          </Suspense>
+        )}
 
         {/* TIMETABLE TAB */}
-        {currentTab === 'schedule' && <ScheduleInfo lang={lang} />}
+        {currentTab === 'schedule' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <ScheduleInfo lang={lang} />
+          </Suspense>
+        )}
 
         {/* PASS GUIDE TAB */}
-        {currentTab === 'pass' && <MrtPassGuide lang={lang} />}
+        {currentTab === 'pass' && (
+          <Suspense fallback={<TabLoadingSkeleton />}>
+            <MrtPassGuide lang={lang} />
+          </Suspense>
+        )}
 
         {/* BLOG PORTAL TAB */}
         {currentTab === 'blog' && (
           <BlogSection
             posts={posts}
             lang={lang}
-            onSelectPost={(post) => setSelectedPost(post)}
+            onSelectPost={(post) => handleOpenPost(post)}
           />
         )}
       </main>
 
-      {/* Reader Modal for Full Article */}
-      <ArticleModal
-        post={selectedPost}
-        onClose={() => setSelectedPost(null)}
-        lang={lang}
-      />
+      {/* Reader Modal for Full Article with Direct Permalinks */}
+      {selectedPost && (
+        <Suspense fallback={null}>
+          <ArticleModal
+            post={selectedPost}
+            onClose={handleClosePost}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {/* Dedicated Hidden Backend Admin / Login Panel (Accessible via /backend/login) */}
-      <AdminPanel
-        isOpen={isAdminOpen}
-        onClose={handleCloseAdmin}
-        posts={posts}
-        onRefreshPosts={fetchPosts}
-        lang={lang}
-      />
+      {isAdminOpen && (
+        <Suspense fallback={null}>
+          <AdminPanel
+            isOpen={isAdminOpen}
+            onClose={handleCloseAdmin}
+            posts={posts}
+            onRefreshPosts={fetchPosts}
+            lang={lang}
+          />
+        </Suspense>
+      )}
 
       {/* Footer (Public with discreet Admin link) */}
       <Footer
         lang={lang}
-        onNavigate={setCurrentTab}
+        onNavigate={handleTabChange}
         onOpenAdmin={() => setIsAdminOpen(true)}
       />
     </div>

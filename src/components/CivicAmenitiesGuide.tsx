@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DHAKA_CIVIC_AMENITIES, CivicAmenity } from '../data/metropolitanData.ts';
 import { Building2, MapPin, Clock, Search, ShieldCheck, HeartPulse, Landmark, Trees, TrainFront } from 'lucide-react';
+import { AdBanner } from './AdBanner.tsx';
 
 interface CivicAmenitiesGuideProps {
   lang: 'bn' | 'en';
@@ -81,6 +82,9 @@ export const CivicAmenitiesGuide: React.FC<CivicAmenitiesGuideProps> = ({ lang }
         </div>
       </div>
 
+      {/* AdSense Slot 1: Civic Amenities Top Leaderboard */}
+      <AdBanner slotKey="civic-top" format="leaderboard" label="নাগরিক সেবা স্লট ১ (উপরে)" />
+
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredAmenities.map((amenity) => (
@@ -134,6 +138,9 @@ export const CivicAmenitiesGuide: React.FC<CivicAmenitiesGuideProps> = ({ lang }
           </div>
         ))}
       </div>
+
+      {/* AdSense Slot 2: Civic Amenities Bottom Banner */}
+      <AdBanner slotKey="civic-bottom" format="rectangle" label="নাগরিক সেবা স্লট ২ (নিচে)" />
     </div>
   );
 };

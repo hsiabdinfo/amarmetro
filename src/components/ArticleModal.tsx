@@ -15,6 +15,10 @@ import {
   RefreshCw,
   Lock,
   LogOut,
+  Link as LinkIcon,
+  Check,
+  Copy,
+  MessageCircle,
 } from 'lucide-react';
 
 interface ArticleModalProps {
@@ -34,6 +38,7 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
   const [likes, setLikes] = useState(42);
   const [hasLiked, setHasLiked] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [copiedPermalink, setCopiedPermalink] = useState(false);
 
   // Social Auth for Comments
   const [commentUser, setCommentUser] = useState<CommentUser | null>(() => {
@@ -78,6 +83,37 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
   ]);
 
   if (!post) return null;
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://amarmetro.com';
+  const rawPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const cleanPath = rawPath.endsWith('/') ? rawPath : `${rawPath}/`;
+  const permalink = `${origin}${cleanPath}?post=${encodeURIComponent(post.slug || post.id)}`;
+  const encodedPermalink = encodeURIComponent(permalink);
+  const encodedTitle = encodeURIComponent(`${post.title} - ঢাকা মেট্রো রেল গাইড | amarmetro.com`);
+
+  const handleCopyPermalink = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(permalink);
+      setCopiedPermalink(true);
+      setTimeout(() => setCopiedPermalink(false), 2500);
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${post.title} | Amar Metro - আমার মেট্রো`,
+          text: post.excerpt,
+          url: permalink,
+        });
+        return;
+      } catch (e) {
+        // Fallback to copying permalink
+      }
+    }
+    handleCopyPermalink();
+  };
 
   const handleLike = () => {
     if (!hasLiked) {
@@ -213,6 +249,9 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
               <img
                 src={post.coverImage}
                 alt={post.title}
+                width={800}
+                height={450}
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             </div>
@@ -294,8 +333,8 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
               </p>
             </div>
 
-            {/* In-Article Advertisement Banner Slot (Attractive AdSense / Sponsor Slot) */}
-            <AdBanner format="in-article" />
+            {/* In-Article Advertisement Banner Slot 1 (Attractive AdSense / Sponsor Slot) */}
+            <AdBanner slotKey="article-mid" format="in-article" label="আর্টিকেল ভিতরের বিজ্ঞাপন ১" />
 
             {/* Formatted Body */}
             <div className="prose prose-slate max-w-none">
@@ -320,6 +359,124 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
                 </div>
               </div>
             )}
+
+            {/* Permanent Link & Instant Social Sharing Section */}
+            <div className="p-5 sm:p-6 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                  <LinkIcon className="w-4 h-4 text-emerald-600" />
+                  <span>{lang === 'bn' ? 'পোস্টের স্থায়ী লিংক (পার্মালিংক) ও শেয়ার' : 'Permanent Link & Share'}</span>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  {lang === 'bn' ? 'এই লিংক দিয়ে যেকেউ সরাসরি এই পোস্টটি পড়তে পারবেন' : 'Share this direct article link with anyone'}
+                </span>
+              </div>
+
+              {/* Direct Permalink Input Box */}
+              <div className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                <input
+                  type="text"
+                  readOnly
+                  value={permalink}
+                  className="bg-transparent text-xs text-slate-700 px-3 flex-1 font-mono select-all focus:outline-hidden truncate"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyPermalink}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
+                    copiedPermalink
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-900 hover:bg-emerald-700 text-white'
+                  }`}
+                >
+                  {copiedPermalink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>কপি হয়েছে!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>লিংক কপি</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Social Share Shortcuts */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-xs text-slate-500 font-medium mr-1">
+                  {lang === 'bn' ? 'সোশ্যাল মিডিয়ায় শেয়ার:' : 'Share on:'}
+                </span>
+
+                {/* Native Mobile Share Button */}
+                <button
+                  type="button"
+                  onClick={handleNativeShare}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-98"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{lang === 'bn' ? 'মোবাইলে সরাসরি শেয়ার' : 'Direct Share'}</span>
+                </button>
+
+                {/* WhatsApp */}
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedPermalink}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200/80 transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>হোয়াটসঅ্যাপ</span>
+                </a>
+
+                {/* Facebook */}
+                <a
+                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodedPermalink}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold border border-blue-200/80 transition-colors"
+                >
+                  <span className="font-extrabold text-blue-700">f</span>
+                  <span>ফেসবুক</span>
+                </a>
+
+                {/* Twitter / X */}
+                <a
+                  href={`https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedPermalink}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-semibold border border-slate-300 transition-colors"
+                >
+                  <span className="font-bold text-xs">𝕏</span>
+                  <span>টুইটার</span>
+                </a>
+
+                {/* Telegram */}
+                <a
+                  href={`https://t.me/share/url?url=${encodedPermalink}&text=${encodedTitle}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-semibold border border-sky-200/80 transition-colors"
+                >
+                  <Send className="w-3.5 h-3.5 text-sky-600" />
+                  <span>টেলিগ্রাম</span>
+                </a>
+
+                {/* Native Share Modal trigger */}
+                <button
+                  type="button"
+                  onClick={() => setIsShareModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-slate-600" />
+                  <span>আরও অপশন</span>
+                </button>
+              </div>
+            </div>
+
+            {/* AdSense Slot 2: Article Bottom Ad Slot (Before Citizen Comments) */}
+            <AdBanner slotKey="article-bottom" format="rectangle" label="আর্টিকেল সমাপ্তি বিজ্ঞাপন ২" />
 
             {/* Comments Section with Mandatory Social Login & Spam-Filter CAPTCHA */}
             <div className="pt-8 border-t border-slate-200 space-y-6">
@@ -476,6 +633,7 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         title={post.title}
+        url={permalink}
         lang={lang}
       />
     </>

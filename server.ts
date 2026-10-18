@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import compression from 'compression';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,10 +18,21 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
+// Enable Gzip/Brotli compression for all JSON, HTML, CSS, JS responses to boost PageSpeed
+app.use(compression());
+
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
-app.use('/uploads', express.static(UPLOADS_DIR));
-app.use('/fonts', express.static(path.join(__dirname, 'public', 'fonts')));
+
+// Long-term immutable caching for fonts and static uploads
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
+app.use(
+  '/fonts',
+  express.static(path.join(__dirname, 'public', 'fonts'), {
+    maxAge: '365d',
+    immutable: true,
+  })
+);
 
 // Helper to ensure data directory and file exist
 function getPosts() {
@@ -94,6 +106,7 @@ app.get('/api/posts/:id', (req, res) => {
 });
 
 const ADS_FILE = path.join(__dirname, 'data', 'ads.json');
+const PUBLIC_ADS_FILE = path.join(__dirname, 'public', 'data', 'ads.json');
 
 // Ads Configuration Endpoints
 app.get('/api/ads', (req, res) => {
@@ -122,6 +135,18 @@ app.post('/api/ads', (req, res) => {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(ADS_FILE, JSON.stringify(config, null, 2), 'utf-8');
+
+    // Also sync to public/data/ads.json for static builds
+    try {
+      const pubDir = path.dirname(PUBLIC_ADS_FILE);
+      if (!fs.existsSync(pubDir)) {
+        fs.mkdirSync(pubDir, { recursive: true });
+      }
+      fs.writeFileSync(PUBLIC_ADS_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    } catch (pubErr) {
+      console.warn('Could not sync to public ads file:', pubErr);
+    }
+
     return res.json({ success: true, message: 'বিজ্ঞাপন কনফিগারেশন সংরক্ষিত হয়েছে।' });
   } catch (err: any) {
     console.error('Error saving ads config:', err);
@@ -130,6 +155,22 @@ app.post('/api/ads', (req, res) => {
 });
 
 const AUTH_FILE = path.join(__dirname, 'data', 'auth.json');
+const PUBLIC_AUTH_FILE = path.join(__dirname, 'public', 'data', 'auth.json');
+
+// Admin get auth status
+app.get('/api/admin/auth', (_req, res) => {
+  try {
+    if (fs.existsSync(AUTH_FILE)) {
+      const authData = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
+      if (authData && authData.passwordHash && authData.passwordHash.trim() !== '') {
+        return res.json({ hasCustomPassword: true, passwordHash: authData.passwordHash });
+      }
+    }
+  } catch (e) {
+    console.error('Error reading auth file:', e);
+  }
+  return res.json({ hasCustomPassword: false, passwordHash: '' });
+});
 
 // Admin verify
 app.post('/api/admin/verify', (req, res) => {
@@ -138,16 +179,18 @@ app.post('/api/admin/verify', (req, res) => {
   try {
     if (fs.existsSync(AUTH_FILE)) {
       const authData = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
-      if (authData && authData.passwordHash) {
+      if (authData && authData.passwordHash && authData.passwordHash.trim() !== '') {
         if (hash && hash === authData.passwordHash) {
           return res.json({ success: true, token: 'amarmetro-secure-token' });
         }
+        return res.status(401).json({ success: false, message: 'ভুল এডমিন পাসওয়ার্ড। অনুগ্রহ করে আবার চেষ্টা করুন।' });
       }
     }
   } catch (e) {
     console.error('Error reading auth file:', e);
   }
 
+  // Fallback ONLY when no custom password exists in data/auth.json
   if (password === 'admin123' || password === 'metro2026' || password === 'admin') {
     return res.json({ success: true, token: 'demo-admin-token-valid' });
   }
@@ -161,11 +204,22 @@ app.post('/api/admin/change-password', (req, res) => {
     if (!newHash) {
       return res.status(400).json({ success: false, message: 'পাসওয়ার্ড হ্যাশ প্রয়োজন।' });
     }
+    const payload = JSON.stringify({ passwordHash: newHash, updatedAt: new Date().toISOString() }, null, 2);
+
+    // Save to data/auth.json
     const dir = path.dirname(AUTH_FILE);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(AUTH_FILE, JSON.stringify({ passwordHash: newHash, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
+    fs.writeFileSync(AUTH_FILE, payload, 'utf-8');
+
+    // Save to public/data/auth.json
+    const pubDir = path.dirname(PUBLIC_AUTH_FILE);
+    if (!fs.existsSync(pubDir)) {
+      fs.mkdirSync(pubDir, { recursive: true });
+    }
+    fs.writeFileSync(PUBLIC_AUTH_FILE, payload, 'utf-8');
+
     return res.json({ success: true, message: 'পাসওয়ার্ড সফলভাবে সার্ভারে সংরক্ষিত হয়েছে।' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: 'সার্ভার ত্রুটি: ' + err.message });
@@ -320,8 +374,30 @@ app.get('/api/status', (_req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    // Vite hashed static assets (immutable 1 year caching)
+    app.use(
+      '/assets',
+      express.static(path.join(__dirname, 'dist', 'assets'), {
+        maxAge: '365d',
+        immutable: true,
+      })
+    );
+
+    // General static files (1 day caching)
+    app.use(
+      express.static(path.join(__dirname, 'dist'), {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html')) {
+            // Never cache index.html so users get latest updates instantly
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
+
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   } else {

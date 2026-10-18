@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DHAKA_BUS_ROUTES, BusRoute } from '../data/metropolitanData.ts';
 import { Bus, MapPin, Search, ArrowRight, Clock, Banknote, ShieldAlert } from 'lucide-react';
+import { AdBanner } from './AdBanner.tsx';
 
 interface BusRoutesGuideProps {
   lang: 'bn' | 'en';
@@ -85,6 +86,9 @@ export const BusRoutesGuide: React.FC<BusRoutesGuideProps> = ({ lang }) => {
         </div>
       </div>
 
+      {/* AdSense Slot 1: Bus Routes Top Leaderboard */}
+      <AdBanner slotKey="bus-routes-top" format="leaderboard" label="বাস রুট স্লট ১ (উপরে)" />
+
       {/* Routes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredRoutes.map((bus) => (
@@ -159,6 +163,9 @@ export const BusRoutesGuide: React.FC<BusRoutesGuideProps> = ({ lang }) => {
           <p className="text-xs text-slate-500 mt-1">অন্য কোনো স্টেশন বা নাম দিয়ে আবার খুঁজুন।</p>
         </div>
       )}
+
+      {/* AdSense Slot 2: Bus Routes Bottom Banner */}
+      <AdBanner slotKey="bus-routes-bottom" format="rectangle" label="বাস রুট স্লট ২ (নিচে)" />
     </div>
   );
 };

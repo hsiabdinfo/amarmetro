@@ -1,5 +1,6 @@
 import React from 'react';
 import { CreditCard, Check, ShieldCheck, Download, AlertCircle, HelpCircle } from 'lucide-react';
+import { AdBanner } from './AdBanner.tsx';
 
 interface MrtPassGuideProps {
   lang: 'bn' | 'en';
@@ -27,6 +28,9 @@ export const MrtPassGuide: React.FC<MrtPassGuideProps> = ({ lang }) => {
           </p>
         </div>
       </div>
+
+      {/* AdSense Slot 1: MRT Pass Top Leaderboard */}
+      <AdBanner slotKey="pass-top" format="leaderboard" label="এমআরটি পাস স্লট ১ (উপরে)" />
 
       {/* Comparison: MRT Pass vs Single Journey */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -152,6 +156,9 @@ export const MrtPassGuide: React.FC<MrtPassGuideProps> = ({ lang }) => {
           </div>
         </div>
       </div>
+
+      {/* AdSense Slot 2: MRT Pass Bottom Banner */}
+      <AdBanner slotKey="pass-bottom" format="rectangle" label="এমআরটি পাস স্লট ২ (নিচে)" />
     </div>
   );
 };

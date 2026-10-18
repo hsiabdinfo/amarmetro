@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock, Calendar, AlertCircle, Sparkles, Train } from 'lucide-react';
+import { AdBanner } from './AdBanner.tsx';
 
 interface ScheduleInfoProps {
   lang: 'bn' | 'en';
@@ -19,6 +20,9 @@ export const ScheduleInfo: React.FC<ScheduleInfoProps> = ({ lang }) => {
             : 'Operational hours and headway schedules for weekdays and weekends'}
         </p>
       </div>
+
+      {/* AdSense Slot 1: Timetable Top Leaderboard */}
+      <AdBanner slotKey="schedule-top" format="leaderboard" label="ট্রেন সময়সূচী স্লট ১ (উপরে)" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Regular Days (Saturday to Thursday) */}
@@ -116,6 +120,9 @@ export const ScheduleInfo: React.FC<ScheduleInfoProps> = ({ lang }) => {
           </div>
         </div>
       </div>
+
+      {/* AdSense Slot 2: Timetable Bottom Banner */}
+      <AdBanner slotKey="schedule-bottom" format="rectangle" label="ট্রেন সময়সূচী স্লট ২ (নিচে)" />
     </div>
   );
 };

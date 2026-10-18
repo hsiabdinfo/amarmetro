@@ -4,8 +4,10 @@ import { AdConfig, AdSlotConfig, DEFAULT_AD_CONFIG } from '../types/ad';
 import { getAdConfig, loadGoogleAdSenseScript } from '../utils/ads';
 
 interface AdBannerProps {
-  format: 'leaderboard' | 'in-article' | 'rectangle';
+  slotKey?: string;
+  format?: 'leaderboard' | 'in-article' | 'rectangle';
   className?: string;
+  label?: string;
 }
 
 declare global {
@@ -14,7 +16,12 @@ declare global {
   }
 }
 
-export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) => {
+export const AdBanner: React.FC<AdBannerProps> = ({
+  slotKey,
+  format = 'leaderboard',
+  className = '',
+  label,
+}) => {
   const [adConfig, setAdConfig] = useState<AdConfig>(DEFAULT_AD_CONFIG);
   const [isAdLoaded, setIsAdLoaded] = useState(false);
   const adRef = useRef<HTMLModElement | null>(null);
@@ -47,17 +54,32 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
     };
   }, []);
 
-  // Determine which slot configuration to use
+  // Determine which slot configuration to use: slotKey takes precedence, falling back to format
   const slot: AdSlotConfig =
-    format === 'leaderboard'
+    (slotKey && adConfig.slots && adConfig.slots[slotKey])
+      ? adConfig.slots[slotKey]
+      : format === 'leaderboard'
       ? adConfig.leaderboard
       : format === 'in-article'
       ? adConfig.inArticle
       : adConfig.sidebar || adConfig.leaderboard;
 
+  // Extract pubId and slotId from adCode if user pasted full snippet
+  let pubId = slot.adClient || adConfig.googleAdSense?.publisherId || '';
+  let slotId = slot.adSlot || '';
+
+  if ((!pubId || !slotId) && slot.adCode) {
+    const clientMatch =
+      slot.adCode.match(/data-ad-client=["']([^"']+)["']/i) ||
+      slot.adCode.match(/client=([ca-pub-\d]+)/i);
+    const slotMatch = slot.adCode.match(/data-ad-slot=["']([^"']+)["']/i);
+    if (clientMatch && !pubId) pubId = clientMatch[1];
+    if (slotMatch && !slotId) slotId = slotMatch[1];
+  }
+
   // Execute AdSense push when slot is Google AdSense
   useEffect(() => {
-    if (slot.type === 'google-adsense' && slot.adSlot && adConfig.googleAdSense.publisherId) {
+    if (slot.type === 'google-adsense' && slotId && pubId) {
       try {
         if (typeof window !== 'undefined') {
           (window.adsbygoogle = window.adsbygoogle || []).push({});
@@ -67,7 +89,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
         // Ignored or ad blocker
       }
     }
-  }, [slot.type, slot.adSlot, adConfig.googleAdSense.publisherId]);
+  }, [slot.type, slotId, pubId]);
 
   // If slot is explicitly disabled by admin, render nothing
   if (slot.enabled === false) {
@@ -76,14 +98,11 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
 
   // 1. Google AdSense Mode
   if (slot.type === 'google-adsense') {
-    const pubId = slot.adClient || adConfig.googleAdSense.publisherId;
-    const slotId = slot.adSlot;
-
     return (
       <div className={`w-full my-6 ${className}`}>
         <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest px-2 mb-1">
           <span>বিজ্ঞাপন / ADVERTISEMENT</span>
-          <span>Google AdSense ({pubId ? 'Active' : 'Setup Required'})</span>
+          <span>Google AdSense</span>
         </div>
 
         <div className="w-full bg-slate-50 border border-slate-200/90 rounded-2xl p-4 overflow-hidden min-h-[100px] flex flex-col items-center justify-center text-center">
@@ -95,26 +114,38 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
                 style={{ display: 'block', minHeight: format === 'leaderboard' ? '90px' : '150px' }}
                 data-ad-client={pubId}
                 data-ad-slot={slotId}
-                data-ad-format="auto"
+                data-ad-format={slot.adFormat || 'auto'}
                 data-full-width-responsive="true"
               />
-              {/* Dev/Fallback preview info if AdSense isn't serving yet on non-approved domain */}
+              {/* Discreet status info */}
               <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
                 <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
                 <span>
-                  AdSense Slot #{slotId} সংযুক্ত আছে। গুগল থেকে বিজ্ঞাপন লোড না হলে লাইভ ডোমেইনে অনুমোদন চেক করুন।
+                  AdSense Slot #{slotId} সংযুক্ত আছে
                 </span>
               </div>
             </div>
           ) : (
-            <div className="py-6 px-4 space-y-2 text-slate-500 max-w-md">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 mx-auto">
-                <Info className="w-5 h-5" />
+            /* Fallback clean transit banner if AdSense Slot ID is not entered yet */
+            <div className="w-full bg-gradient-to-r from-emerald-50/60 via-slate-50 to-emerald-50/60 border border-emerald-200/60 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h6 className="font-bold text-xs text-slate-900">
+                    {slot.title || 'ঢাকা মেট্রো ডিজিটাল ট্রানজিট নেটওয়ার্ক ও পার্টনার সার্ভিস'}
+                  </h6>
+                  <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-1">
+                    {slot.description || 'বিজ্ঞাপন প্রচারের জন্য যোগাযোগ করুন অথবা অ্যাডমিন থেকে Google AdSense স্লট আইডি দিন।'}
+                  </p>
+                </div>
               </div>
-              <h5 className="font-bold text-sm text-slate-800">গুগল অ্যাডসেন্স স্লট কনফিগারেশন প্রয়োজন</h5>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                অ্যাডমিন প্যানেল থেকে <strong>Publisher ID</strong> ও <strong>Slot ID</strong> সেট করুন, অথবা কাস্টম বিজ্ঞাপনে স্যুইচ করুন।
-              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                  Ad Slot Ready
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -138,6 +169,10 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
               <img
                 src={slot.imageUrl}
                 alt={slot.title || 'Sponsor Ad'}
+                width={isLeaderboard ? 176 : 144}
+                height={isLeaderboard ? 80 : 112}
+                loading="lazy"
+                decoding="async"
                 className={`${
                   isLeaderboard ? 'w-full sm:w-44 h-24 sm:h-20' : 'w-full sm:w-36 h-28'
                 } object-cover rounded-xl border border-slate-200 shadow-2xs shrink-0`}
@@ -234,6 +269,10 @@ export const AdBanner: React.FC<AdBannerProps> = ({ format, className = '' }) =>
               'https://images.unsplash.com/photo-1563013544-824ae1b704d3?auto=format&fit=crop&w=400&q=80'
             }
             alt="Ad Banner"
+            width={144}
+            height={112}
+            loading="lazy"
+            decoding="async"
             className="w-full sm:w-36 h-28 object-cover rounded-xl shadow-2xs shrink-0"
           />
           <div className="space-y-1.5 flex-1 text-center sm:text-left">
