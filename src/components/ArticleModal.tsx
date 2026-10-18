@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BlogPost } from '../types/blog.ts';
 import { AdBanner } from './AdBanner.tsx';
 import { ShareModal } from './ShareModal.tsx';
+import { renderRichContent } from '../utils/markdown.tsx';
 import {
   X,
   Clock,
@@ -166,48 +167,6 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
     refreshCaptcha();
   };
 
-  // Convert basic markdown in content (headers, bold, lists) to formatted elements
-  const renderFormattedContent = (text: string) => {
-    const lines = text.split('\n');
-    return lines.map((line, idx) => {
-      if (line.startsWith('### ')) {
-        return (
-          <h3 key={idx} className="text-lg font-bold text-slate-900 mt-6 mb-2">
-            {line.replace('### ', '')}
-          </h3>
-        );
-      }
-      if (line.startsWith('## ')) {
-        return (
-          <h2 key={idx} className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-8 mb-3">
-            {line.replace('## ', '')}
-          </h2>
-        );
-      }
-      if (line.startsWith('- ') || line.startsWith('* ')) {
-        return (
-          <li key={idx} className="ml-4 list-disc text-slate-700 my-1 leading-relaxed">
-            {line.substring(2)}
-          </li>
-        );
-      }
-      if (/^\d+\.\s/.test(line)) {
-        return (
-          <li key={idx} className="ml-4 list-decimal text-slate-700 my-1 leading-relaxed">
-            {line.replace(/^\d+\.\s/, '')}
-          </li>
-        );
-      }
-      if (line.trim() === '') {
-        return <div key={idx} className="h-3"></div>;
-      }
-      return (
-        <p key={idx} className="text-slate-700 leading-relaxed text-base my-2">
-          {line}
-        </p>
-      );
-    });
-  };
 
   return (
     <>
@@ -336,9 +295,9 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
             {/* In-Article Advertisement Banner Slot 1 (Attractive AdSense / Sponsor Slot) */}
             <AdBanner slotKey="article-mid" format="in-article" label="আর্টিকেল ভিতরের বিজ্ঞাপন ১" />
 
-            {/* Formatted Body */}
-            <div className="prose prose-slate max-w-none">
-              {renderFormattedContent(post.content)}
+            {/* Formatted Rich Body (H1, H2, H3, Bold, Italic, Underline, Lists, Tables, Quotes) */}
+            <div className="prose prose-slate max-w-none text-slate-800">
+              {renderRichContent(post.content)}
             </div>
 
             {/* Tags */}

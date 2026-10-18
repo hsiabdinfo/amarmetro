@@ -52,6 +52,7 @@ import {
 } from '../utils/security.ts';
 import { AdConfig, DEFAULT_AD_CONFIG, AD_SLOTS_DIRECTORY, AdSlotConfig, AdSlotMeta } from '../types/ad.ts';
 import { getAdConfig, saveAdConfig } from '../utils/ads.ts';
+import { RichPostEditor } from './RichPostEditor.tsx';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -91,7 +92,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Admin tabs: 'create' | 'manage' | 'ads' | 'security' | 'guide'
   const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'ads' | 'security' | 'guide'>('create');
-  const [contentTab, setContentTab] = useState<'write' | 'preview'>('write');
 
   // Ads & AdSense Management State
   const [adConfig, setAdConfig] = useState<AdConfig>(DEFAULT_AD_CONFIG);
@@ -1048,15 +1048,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    {lang === 'bn' ? 'মূল বিষয়বস্তু (Full Content / Markdown)' : 'Content (Markdown)'}
+                  <label className="text-xs font-bold text-slate-700 flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{lang === 'bn' ? 'মূল বিষয়বস্তু (Rich Markdown Editor) *' : 'Article Body (Rich Editor) *'}</span>
+                    </div>
+                    <span className="text-[11px] font-normal text-slate-500">
+                      H1, H2, H3, Bold, Italic, Underline, Lists, Links, Quotes কার্যকর
+                    </span>
                   </label>
-                  <textarea
-                    rows={8}
+                  <RichPostEditor
                     value={editingPost.content}
-                    onChange={(e) => setEditingPost({ ...editingPost, content: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono"
-                    required
+                    onChange={(val) => setEditingPost({ ...editingPost, content: val })}
+                    lang={lang}
+                    minRows={10}
                   />
                 </div>
 
@@ -1314,102 +1319,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Main Content with Write / Preview Tabs */}
+                  {/* Main Content with Rich Markdown Editor */}
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-700 flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
                         <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{lang === 'bn' ? 'মূল বিষয়বস্তু (Content - Markdown সমর্থিত) *' : 'Article Body (Markdown) *'}</span>
-                      </label>
-
-                      <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => setContentTab('write')}
-                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer ${
-                            contentTab === 'write' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-600'
-                          }`}
-                        >
-                          {lang === 'bn' ? 'এডিটর' : 'Write'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setContentTab('preview')}
-                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer ${
-                            contentTab === 'preview' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-600'
-                          }`}
-                        >
-                          {lang === 'bn' ? 'লাইভ প্রিভিউ' : 'Preview'}
-                        </button>
+                        <span>{lang === 'bn' ? 'মূল বিষয়বস্তু (Rich Markdown Editor) *' : 'Article Body (Rich Editor) *'}</span>
                       </div>
-                    </div>
+                      <span className="text-[11px] font-normal text-slate-500">
+                        H1, H2, H3, Bold, Italic, Underline, Lists, Links, Quotes সমর্থিত
+                      </span>
+                    </label>
 
-                    {contentTab === 'write' ? (
-                      <div className="space-y-2">
-                        {/* Quick Markdown formatting bar */}
-                        <div className="flex items-center gap-2 py-1 px-2 bg-slate-100 rounded-lg text-xs text-slate-600">
-                          <span className="font-semibold text-slate-500">{lang === 'bn' ? 'টুলস:' : 'Shortcuts:'}</span>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, content: formData.content + '\n## সেকশন শিরোনাম\n' })}
-                            className="px-2 py-0.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer font-bold"
-                          >
-                            H2
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, content: formData.content + '\n### সাব-শিরোনাম\n' })}
-                            className="px-2 py-0.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer font-bold"
-                          >
-                            H3
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, content: formData.content + '\n- পয়েন্ট ১\n- পয়েন্ট ২\n' })}
-                            className="px-2 py-0.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer"
-                          >
-                            • বুলেট লিস্ট
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, content: formData.content + '\n1. প্রথম ধাপ\n2. দ্বিতীয় ধাপ\n' })}
-                            className="px-2 py-0.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer"
-                          >
-                            1. নম্বর লিস্ট
-                          </button>
-                        </div>
-
-                        <textarea
-                          rows={10}
-                          placeholder={
-                            lang === 'bn'
-                              ? 'আপনার আর্টিকেলের বিশদ বিবরণ এখানে লিখুন...\n\n## প্রথম সেকশন\nমেট্রো রেলের সুবিধা...\n\n### গুরুত্বপূর্ণ পয়েন্ট\n- সহজে টিকিট রিচার্জ\n- ১০% নগদ সাশ্রয়'
-                              : 'Write detailed article content here (Markdown supported)...'
-                          }
-                          value={formData.content}
-                          onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                          required
-                        />
-                      </div>
-                    ) : (
-                      <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl min-h-[240px] prose prose-slate max-w-none text-sm">
-                        {formData.content ? (
-                          formData.content.split('\n').map((line, idx) => {
-                            if (line.startsWith('## ')) return <h2 key={idx} className="text-lg font-bold text-slate-900 my-2">{line.replace('## ', '')}</h2>;
-                            if (line.startsWith('### ')) return <h3 key={idx} className="text-base font-bold text-slate-900 my-1">{line.replace('### ', '')}</h3>;
-                            if (line.startsWith('- ')) return <li key={idx} className="ml-4 list-disc text-slate-700">{line.replace('- ', '')}</li>;
-                            if (/^\d+\.\s/.test(line)) return <li key={idx} className="ml-4 list-decimal text-slate-700">{line.replace(/^\d+\.\s/, '')}</li>;
-                            if (line.trim() === '') return <div key={idx} className="h-2"></div>;
-                            return <p key={idx} className="text-slate-700 my-1">{line}</p>;
-                          })
-                        ) : (
-                          <p className="text-slate-400 italic">
-                            {lang === 'bn' ? 'বিষয়বস্তু লিখলে প্রিভিউ দেখা যাবে' : 'Write content to view preview'}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    <RichPostEditor
+                      value={formData.content}
+                      onChange={(val) => setFormData({ ...formData, content: val })}
+                      lang={lang}
+                      minRows={12}
+                    />
                   </div>
 
                   {/* Metadata: Tags, Author, Status */}
