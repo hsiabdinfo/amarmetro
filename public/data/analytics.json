@@ -1,0 +1,94 @@
+{
+  "totalVisits": 15421,
+  "todayDate": "2026-10-27",
+  "todayVisits": 1,
+  "uniqueVisitorsCount": 9860,
+  "mobileVisits": 11410,
+  "desktopVisits": 4011,
+  "dailyVisits": {
+    "2026-10-20": {
+      "visits": 740,
+      "uniques": 520,
+      "label": "২০ অক্টো"
+    },
+    "2026-10-21": {
+      "visits": 820,
+      "uniques": 610,
+      "label": "২১ অক্টো"
+    },
+    "2026-10-22": {
+      "visits": 910,
+      "uniques": 680,
+      "label": "২২ অক্টো"
+    },
+    "2026-10-23": {
+      "visits": 860,
+      "uniques": 630,
+      "label": "২৩ অক্টো"
+    },
+    "2026-10-24": {
+      "visits": 1040,
+      "uniques": 790,
+      "label": "২৪ অক্টো"
+    },
+    "2026-10-25": {
+      "visits": 950,
+      "uniques": 710,
+      "label": "২৫ অক্টো"
+    },
+    "2026-10-26": {
+      "visits": 920,
+      "uniques": 690,
+      "label": "আজ (২৬)"
+    },
+    "2026-10-27": {
+      "visits": 1,
+      "uniques": 0,
+      "label": "২৭ অক্টো"
+    }
+  },
+  "pageViews": {
+    "/": {
+      "path": "/",
+      "title": "হোম ও মেট্রোরেল লাইভ ভাড়া ক্যালকুলেটর",
+      "views": 8560
+    },
+    "/stations": {
+      "path": "/stations",
+      "title": "স্টেশন গাইড",
+      "views": 3241
+    },
+    "/schedule": {
+      "path": "/schedule",
+      "title": "সময়সূচী ও পিক আওয়ার হেডওয়ে",
+      "views": 2580
+    },
+    "/pass": {
+      "path": "/pass",
+      "title": "এমআরটি পাস ও র‍্যাপিড পাস নির্দেশিকা",
+      "views": 2040
+    },
+    "/blog": {
+      "path": "/blog",
+      "title": "মেট্রোরেল ট্রানজিট জার্নাল ও খবর",
+      "views": 1720
+    },
+    "/bus-routes": {
+      "path": "/bus-routes",
+      "title": "বাস রুট ও ফিডার সংযোগ",
+      "views": 1390
+    },
+    "/civic": {
+      "path": "/civic",
+      "title": "যাত্রী সেবা ও জরুরি সুবিধা",
+      "views": 890
+    }
+  },
+  "referrers": {
+    "গুগল সার্চ (Organic Google Search)": 7240,
+    "সরাসরি প্রবেশ (Direct amarmetro.com)": 4350,
+    "ফেসবুক ও সোশ্যাল মিডিয়া (Facebook / Groups)": 2480,
+    "হোয়াটসঅ্যাপ ও মেসেঞ্জার শেয়ার (WhatsApp / Messenger)": 1350
+  },
+  "updatedAt": "2026-10-27T03:45:03.859Z"
+}

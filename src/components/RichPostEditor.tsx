@@ -1141,4 +1141,3 @@ export const RichPostEditor: React.FC<RichPostEditorProps> = ({
     </div>
   );
 };
-

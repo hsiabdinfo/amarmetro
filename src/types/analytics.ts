@@ -39,4 +39,3 @@ export const DEFAULT_GA_CONFIG: GoogleAnalyticsConfig = {
   trackPageviews: true,
   trackClicks: true,
 };
-

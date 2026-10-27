@@ -17,8 +17,16 @@ export interface BlogPost {
   status: 'published' | 'draft';
   readTime: string;
   views: number;
+  likes?: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface PresetImage {
+  id: string;
+  name: string;
+  url: string;
+  isDefault?: boolean;
 }
 
 export interface PostFormData {

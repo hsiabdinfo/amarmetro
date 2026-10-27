@@ -15,6 +15,7 @@
     "status": "published",
     "readTime": "৪ মিনিট",
     "views": 1420,
+    "likes": 84,
     "createdAt": "2026-10-04T08:30:00.000Z"
   },
   {
@@ -33,6 +34,7 @@
     "status": "published",
     "readTime": "৫ মিনিট",
     "views": 2180,
+    "likes": 128,
     "createdAt": "2026-10-03T11:15:00.000Z"
   },
   {
@@ -51,6 +53,7 @@
     "status": "published",
     "readTime": "৩ মিনিট",
     "views": 980,
+    "likes": 56,
     "createdAt": "2026-10-01T14:20:00.000Z"
   },
   {
@@ -69,6 +72,7 @@
     "status": "published",
     "readTime": "৩ মিনিট",
     "views": 1640,
+    "likes": 73,
     "createdAt": "2026-09-28T09:00:00.000Z"
   }
 ]

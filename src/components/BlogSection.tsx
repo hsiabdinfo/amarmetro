@@ -21,9 +21,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({
 
   const getPostPermalink = (post: BlogPost) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://amarmetro.com';
-    const rawPath = typeof window !== 'undefined' ? window.location.pathname : '/';
-    const cleanPath = rawPath.endsWith('/') ? rawPath : `${rawPath}/`;
-    return `${origin}${cleanPath}?post=${encodeURIComponent(post.slug || post.id)}`;
+    return `${origin}/?post=${encodeURIComponent(post.slug || post.id)}`;
   };
 
   const handleCopyPermalink = async (e: React.MouseEvent, post: BlogPost) => {
