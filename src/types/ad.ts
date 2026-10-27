@@ -76,8 +76,8 @@ AD_SLOTS_DIRECTORY.forEach((meta) => {
 
 export const DEFAULT_AD_CONFIG: AdConfig = {
   googleAdSense: {
-    publisherId: '',
-    autoAdsEnabled: false,
+    publisherId: 'ca-pub-5488136470537852',
+    autoAdsEnabled: true,
   },
   leaderboard: {
     enabled: true,

@@ -1,7 +1,7 @@
 {
   "googleAdSense": {
-    "publisherId": "",
-    "autoAdsEnabled": false
+    "publisherId": "ca-pub-5488136470537852",
+    "autoAdsEnabled": true
   },
   "leaderboard": {
     "enabled": true,

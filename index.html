@@ -113,7 +113,14 @@
       }(window.location))
     </script>
 
-    <!-- Google AdSense Auto Verification Script Loader (Reads saved publisher ID) -->
+    <!-- Google AdSense Verification: Meta Tag & Official Crawler Script -->
+    <!-- Method 1: Google AdSense Account Meta Tag (Immediate crawler verification) -->
+    <meta name="google-adsense-account" content="ca-pub-5488136470537852" id="google-adsense-meta" />
+
+    <!-- Method 2: Google AdSense Script Tag (AdSense Code Snippet verification) -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5488136470537852" crossorigin="anonymous" id="google-adsense-script"></script>
+
+    <!-- Client-side sync script: synchronizes Publisher ID from saved config if updated via Admin -->
     <script>
       (function() {
         try {
@@ -122,11 +129,13 @@
             var cfg = JSON.parse(savedAds);
             var pubId = cfg && cfg.googleAdSense && cfg.googleAdSense.publisherId;
             if (pubId && pubId.indexOf('pub-') !== -1) {
-              var s = document.createElement('script');
-              s.async = true;
-              s.crossOrigin = 'anonymous';
-              s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(pubId);
-              document.head.appendChild(s);
+              var cleanPub = pubId.trim().replace(/^ca-/, '');
+              var metaTag = document.getElementById('google-adsense-meta');
+              if (metaTag) metaTag.setAttribute('content', 'ca-' + cleanPub);
+              var scriptTag = document.getElementById('google-adsense-script');
+              if (scriptTag && scriptTag.src.indexOf('0000000000000000') !== -1) {
+                scriptTag.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-' + encodeURIComponent(cleanPub);
+              }
             }
           }
         } catch (e) {}

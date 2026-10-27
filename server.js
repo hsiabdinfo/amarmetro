@@ -522,6 +522,84 @@ app.get("/api/analytics/config", (_req, res) => {
   const cfg = getGaConfigFile();
   res.json({ success: true, config: cfg });
 });
+var ADS_CONFIG_FILE = path.join(__dirname, "data", "ads.json");
+var PUBLIC_ADS_CONFIG_FILE = path.join(__dirname, "public", "data", "ads.json");
+var ADS_TXT_FILE = path.join(__dirname, "public", "ads.txt");
+var INDEX_HTML_FILE = path.join(__dirname, "index.html");
+function getAdsConfigFile() {
+  try {
+    if (fs.existsSync(ADS_CONFIG_FILE)) {
+      const data = fs.readFileSync(ADS_CONFIG_FILE, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error("Error reading ads config:", err);
+  }
+  return null;
+}
+function updateAdSenseFiles(pubId) {
+  if (!pubId || !pubId.trim()) return;
+  const cleanPub = pubId.trim();
+  const rawNumber = cleanPub.replace(/^(ca-)?pub-/, "");
+  const pubWithPub = `pub-${rawNumber}`;
+  const pubWithCa = `ca-pub-${rawNumber}`;
+  try {
+    const adsTxtContent = `# Google AdSense ads.txt for amarmetro.com
+google.com, ${pubWithPub}, DIRECT, f08c47fec0942fa0
+`;
+    fs.writeFileSync(ADS_TXT_FILE, adsTxtContent, "utf-8");
+    const distAdsTxt = path.join(__dirname, "dist", "ads.txt");
+    if (fs.existsSync(path.dirname(distAdsTxt))) {
+      fs.writeFileSync(distAdsTxt, adsTxtContent, "utf-8");
+    }
+  } catch (e) {
+    console.error("Error updating ads.txt:", e);
+  }
+  try {
+    if (fs.existsSync(INDEX_HTML_FILE)) {
+      let html = fs.readFileSync(INDEX_HTML_FILE, "utf-8");
+      if (html.includes('name="google-adsense-account"')) {
+        html = html.replace(/<meta\s+name=["']google-adsense-account["']\s+content=["'][^"']*["']\s*\/?>/gi, `<meta name="google-adsense-account" content="${pubWithCa}" id="google-adsense-meta" />`);
+      } else if (html.includes("</head>")) {
+        html = html.replace("</head>", `  <meta name="google-adsense-account" content="${pubWithCa}" id="google-adsense-meta" />
+</head>`);
+      }
+      const scriptTag = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${pubWithCa}" crossorigin="anonymous" id="google-adsense-script"></script>`;
+      if (html.includes("pagead2.googlesyndication.com/pagead/js/adsbygoogle.js")) {
+        html = html.replace(/<script\s+async\s+src=["']https:\/\/pagead2\.googlesyndication\.com\/pagead\/js\/adsbygoogle\.js\?client=[^"']*["']\s+crossorigin=["']anonymous["'][^>]*><\/script>/gi, scriptTag);
+      } else if (html.includes("</head>")) {
+        html = html.replace("</head>", `  ${scriptTag}
+</head>`);
+      }
+      fs.writeFileSync(INDEX_HTML_FILE, html, "utf-8");
+    }
+  } catch (e) {
+    console.error("Error updating index.html for AdSense:", e);
+  }
+}
+app.get("/api/ads", (_req, res) => {
+  const cfg = getAdsConfigFile();
+  res.json(cfg || {});
+});
+app.post("/api/ads", (req, res) => {
+  try {
+    const config = req.body;
+    if (!config) {
+      return res.status(400).json({ success: false, message: "\u09AC\u09BF\u099C\u09CD\u099E\u09BE\u09AA\u09A8 \u0995\u09A8\u09AB\u09BF\u0997\u09BE\u09B0\u09C7\u09B6\u09A8 \u09AA\u09BE\u0993\u09AF\u09BC\u09BE \u09AF\u09BE\u09AF\u09BC\u09A8\u09BF" });
+    }
+    const payload = JSON.stringify(config, null, 2);
+    fs.mkdirSync(path.dirname(ADS_CONFIG_FILE), { recursive: true });
+    fs.writeFileSync(ADS_CONFIG_FILE, payload, "utf-8");
+    fs.mkdirSync(path.dirname(PUBLIC_ADS_CONFIG_FILE), { recursive: true });
+    fs.writeFileSync(PUBLIC_ADS_CONFIG_FILE, payload, "utf-8");
+    if (config.googleAdSense && config.googleAdSense.publisherId) {
+      updateAdSenseFiles(config.googleAdSense.publisherId);
+    }
+    res.json({ success: true, message: "\u09AC\u09BF\u099C\u09CD\u099E\u09BE\u09AA\u09A8 \u09B8\u09C7\u099F\u09BF\u0982\u09B8 \u0993 ads.txt \u09B8\u09AB\u09B2\u09AD\u09BE\u09AC\u09C7 \u0986\u09AA\u09A1\u09C7\u099F \u09B9\u09DF\u09C7\u099B\u09C7", config });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 var CONTACTS_FILE = path.join(__dirname, "data", "contact_inquiries.json");
 app.post("/api/contact", (req, res) => {
   try {
