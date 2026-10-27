@@ -17,6 +17,8 @@ import defaultPostsData from '../data/posts.json';
 import { INITIAL_BLOG_POSTS } from './data/defaultPosts.ts';
 import { BlogPost } from './types/blog.ts';
 import { getCustomSecretSlug } from './utils/security.ts';
+import { recordVisit, getGoogleAnalyticsConfig, initializeGoogleAnalytics } from './utils/analytics.ts';
+
 import {
   Train,
   Clock,
@@ -50,7 +52,7 @@ export default function App() {
   const [selectedStationId, setSelectedStationId] = useState<string>('motijheel');
   const [copiedHomePostId, setCopiedHomePostId] = useState<string | null>(null);
 
-  // Synchronize Tab Changes with Clean History State
+  // Synchronize Tab Changes with Clean History State & Analytics
   const handleTabChange = (tab: string) => {
     setCurrentTab(tab);
     if (selectedPost) {
@@ -59,6 +61,7 @@ export default function App() {
     const cleanUrl = tab === 'home' ? '/' : `?tab=${encodeURIComponent(tab)}`;
     window.history.pushState({}, '', cleanUrl);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    recordVisit(cleanUrl, `Amar Metro - ${tab}`);
   };
 
   // Open Blog Post with Direct Permalink in URL
@@ -68,6 +71,31 @@ export default function App() {
     const newUrl = `?post=${encodeURIComponent(slug)}`;
     window.history.pushState({ postId: post.id }, '', newUrl);
     document.title = `${post.title} | Amar Metro - আমার মেট্রো`;
+
+    // Synchronize canonical and og:url in document head for exact post link
+    const fullPostUrl = `${window.location.origin}/?post=${encodeURIComponent(slug)}`;
+    const canonicalLink = document.querySelector("link[rel='canonical']");
+    if (canonicalLink) canonicalLink.setAttribute('href', fullPostUrl);
+    const ogUrl = document.querySelector("meta[property='og:url']");
+    if (ogUrl) ogUrl.setAttribute('content', fullPostUrl);
+
+    recordVisit(newUrl, `${post.title} | Amar Metro - আমার মেট্রো`);
+  };
+
+  // Keep likes in sync between ArticleModal, App state, and local storage cache
+  const handleUpdatePostLikes = (postId: string, newLikes: number) => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, likes: newLikes } : p))
+    );
+    setSelectedPost((prev) => (prev && prev.id === postId ? { ...prev, likes: newLikes } : prev));
+    try {
+      const cached = localStorage.getItem('amarmetro_posts_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const updated = parsed.map((p: BlogPost) => (p.id === postId ? { ...p, likes: newLikes } : p));
+        localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updated));
+      }
+    } catch {}
   };
 
   // Close Article Reader and Restore URL
@@ -76,21 +104,25 @@ export default function App() {
     const cleanUrl = currentTab === 'home' ? '/' : `?tab=${encodeURIComponent(currentTab)}`;
     window.history.pushState({}, '', cleanUrl);
     document.title = 'Amar Metro - আমার মেট্রো | ঢাকা মেট্রো রেল গাইড, ভাড়া ও ব্লগ';
+
+    const rootUrl = `${window.location.origin}/`;
+    const canonicalLink = document.querySelector("link[rel='canonical']");
+    if (canonicalLink) canonicalLink.setAttribute('href', rootUrl);
+    const ogUrl = document.querySelector("meta[property='og:url']");
+    if (ogUrl) ogUrl.setAttribute('content', rootUrl);
   };
 
   // Quick Copy / Share Permalink on Homepage Card
   const handleCopyHomePermalink = async (e: React.MouseEvent, post: BlogPost) => {
     e.stopPropagation();
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://amarmetro.com';
-    const rawPath = typeof window !== 'undefined' ? window.location.pathname : '/';
-    const cleanPath = rawPath.endsWith('/') ? rawPath : `${rawPath}/`;
-    const permalink = `${origin}${cleanPath}?post=${encodeURIComponent(post.slug || post.id)}`;
+    const permalink = `${origin}/?post=${encodeURIComponent(post.slug || post.id)}`;
 
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
           title: `${post.title} | Amar Metro - আমার মেট্রো`,
-          text: post.excerpt,
+          text: `${post.title}\n\nপড়ুন amarmetro.com এ:`,
           url: permalink,
         });
         return;
@@ -159,10 +191,16 @@ export default function App() {
         }
       }
 
-      // Check post permalink param
+      // Check post permalink param (?post=..., /post/..., #post/...)
       let postParam = urlParams.get('post');
       if (!postParam && (hash.startsWith('#post/') || hash.startsWith('#article/'))) {
         postParam = hash.replace(/^#(post|article)\//, '');
+      }
+      if (!postParam) {
+        const pathMatch = window.location.pathname.match(/^\/(?:post|article)\/(.+)$/);
+        if (pathMatch) {
+          postParam = pathMatch[1];
+        }
       }
 
       if (postParam && posts.length > 0) {
@@ -175,6 +213,11 @@ export default function App() {
         if (found) {
           setSelectedPost(found);
           document.title = `${found.title} | Amar Metro - আমার মেট্রো`;
+          const fullPostUrl = `${window.location.origin}/?post=${encodeURIComponent(found.slug || found.id)}`;
+          const canonicalLink = document.querySelector("link[rel='canonical']");
+          if (canonicalLink) canonicalLink.setAttribute('href', fullPostUrl);
+          const ogUrl = document.querySelector("meta[property='og:url']");
+          if (ogUrl) ogUrl.setAttribute('content', fullPostUrl);
         }
       }
     };
@@ -249,6 +292,12 @@ export default function App() {
 
   useEffect(() => {
     fetchPosts();
+    // Initialize Google Analytics from backend config / local storage
+    getGoogleAnalyticsConfig().then((cfg) => {
+      initializeGoogleAnalytics(cfg);
+    });
+    // Record initial visit in real-time visitor stats
+    recordVisit(window.location.pathname || '/', document.title);
   }, []);
 
   const handleStationClickFromMap = (stationId: string) => {
@@ -564,6 +613,7 @@ export default function App() {
             post={selectedPost}
             onClose={handleClosePost}
             lang={lang}
+            onUpdatePostLikes={handleUpdatePostLikes}
           />
         </Suspense>
       )}
