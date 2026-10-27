@@ -1,10 +1,10 @@
 {
-  "totalVisits": 15421,
+  "totalVisits": 15424,
   "todayDate": "2026-10-27",
-  "todayVisits": 1,
+  "todayVisits": 4,
   "uniqueVisitorsCount": 9860,
-  "mobileVisits": 11410,
-  "desktopVisits": 4011,
+  "mobileVisits": 11411,
+  "desktopVisits": 4013,
   "dailyVisits": {
     "2026-10-20": {
       "visits": 740,
@@ -42,7 +42,7 @@
       "label": "আজ (২৬)"
     },
     "2026-10-27": {
-      "visits": 1,
+      "visits": 4,
       "uniques": 0,
       "label": "২৭ অক্টো"
     }
@@ -50,8 +50,8 @@
   "pageViews": {
     "/": {
       "path": "/",
-      "title": "হোম ও মেট্রোরেল লাইভ ভাড়া ক্যালকুলেটর",
-      "views": 8560
+      "title": "Home",
+      "views": 8562
     },
     "/stations": {
       "path": "/stations",
@@ -82,13 +82,18 @@
       "path": "/civic",
       "title": "যাত্রী সেবা ও জরুরি সুবিধা",
       "views": 890
+    },
+    "?post=mrt-pass-vs-single-journey-ticket-guide": {
+      "path": "?post=mrt-pass-vs-single-journey-ticket-guide",
+      "title": "এমআরটি পাস (MRT Pass) বনাম সিঙ্গেল জার্নি টিকিট: কোনটি আপনার জন্য সেরা এবং কীভাবে করবেন রিচার্জ? | Amar Metro - আমার মেট্রো",
+      "views": 1
     }
   },
   "referrers": {
-    "গুগল সার্চ (Organic Google Search)": 7240,
+    "গুগল সার্চ (Organic Google Search)": 7242,
     "সরাসরি প্রবেশ (Direct amarmetro.com)": 4350,
     "ফেসবুক ও সোশ্যাল মিডিয়া (Facebook / Groups)": 2480,
     "হোয়াটসঅ্যাপ ও মেসেঞ্জার শেয়ার (WhatsApp / Messenger)": 1350
   },
-  "updatedAt": "2026-10-27T03:45:03.859Z"
+  "updatedAt": "2026-10-27T09:52:59.466Z"
 }

@@ -575,27 +575,50 @@ app.post('/api/stats/visit', (req, res) => {
   }
 });
 
+// Real-time visitor heartbeat ping
+app.post('/api/stats/ping', (req, res) => {
+  const { visitorId } = req.body;
+  const vId = visitorId || 'anon-' + Math.random().toString(36).substring(2, 8);
+  activeVisitorsMap.set(vId, Date.now());
+
+  const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
+  let realActive = 0;
+  for (const [key, lastSeen] of activeVisitorsMap.entries()) {
+    if (lastSeen < threeMinutesAgo) {
+      activeVisitorsMap.delete(key);
+    } else {
+      realActive++;
+    }
+  }
+  res.json({ success: true, activeNow: Math.max(1, realActive) });
+});
+
 app.get('/api/stats/summary', (_req, res) => {
   try {
     const analytics = getAnalyticsData();
     const now = Date.now();
     const fiveMinutesAgo = now - 5 * 60 * 1000;
 
-    // Clean up inactive visitors and count active now
-    let activeNow = 0;
+    // Clean up inactive visitors (inactive for > 3 minutes)
+    const threeMinutesAgo = now - 3 * 60 * 1000;
+    let realActive = 0;
     for (const [key, lastSeen] of activeVisitorsMap.entries()) {
-      if (lastSeen < fiveMinutesAgo) {
+      if (lastSeen < threeMinutesAgo) {
         activeVisitorsMap.delete(key);
       } else {
-        activeNow++;
+        realActive++;
       }
     }
-    // Realistic active baseline for active commuters during service hours
-    if (activeNow < 8) {
-      const hour = new Date().getHours();
-      // Peak commuter hours
-      const base = hour >= 7 && hour <= 22 ? 14 + (hour % 7) : 5;
-      activeNow = Math.max(activeNow, base);
+
+    // Genuine active online count: strictly based on real active sessions
+    // Minimum 1 (the visitor actively viewing/querying right now)
+    let activeNow = Math.max(1, realActive);
+
+    // Consistency rule: todayVisits must always be at least activeNow
+    // (active users online right now cannot be greater than total visits today)
+    const todayVisits = Math.max(analytics.todayVisits || 1, activeNow);
+    if (activeNow > todayVisits) {
+      activeNow = todayVisits;
     }
 
     // Calculate mobile vs desktop percentages
@@ -646,6 +669,41 @@ app.get('/api/stats/summary', (_req, res) => {
 app.get('/api/analytics/config', (_req, res) => {
   const cfg = getGaConfigFile();
   res.json({ success: true, config: cfg });
+});
+
+// Contact Us Inquiries Endpoint (for AdSense & reader communication)
+const CONTACTS_FILE = path.join(__dirname, 'data', 'contact_inquiries.json');
+app.post('/api/contact', (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body;
+    if (!name || !email || !message) {
+      return res.status(400).json({ success: false, message: 'সকল আবশ্যকীয় তথ্য প্রদান করুন।' });
+    }
+
+    let inquiries: any[] = [];
+    if (fs.existsSync(CONTACTS_FILE)) {
+      try {
+        inquiries = JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf-8'));
+      } catch {}
+    }
+
+    const newInquiry = {
+      id: `inq-${Date.now()}`,
+      name: name.trim(),
+      email: email.trim(),
+      subject: (subject || 'সাধারণ জিজ্ঞাসা').trim(),
+      message: message.trim(),
+      timestamp: new Date().toISOString(),
+    };
+
+    inquiries.unshift(newInquiry);
+    fs.mkdirSync(path.dirname(CONTACTS_FILE), { recursive: true });
+    fs.writeFileSync(CONTACTS_FILE, JSON.stringify(inquiries.slice(0, 100), null, 2), 'utf-8');
+
+    res.json({ success: true, message: 'আপনার বার্তাটি সফলভাবে জমা হয়েছে।' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 app.post('/api/analytics/config', (req, res) => {

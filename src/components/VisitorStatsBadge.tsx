@@ -46,9 +46,10 @@ export const VisitorStatsBadge: React.FC<VisitorStatsBadgeProps> = ({
     return num.toLocaleString('en-US');
   };
 
-  const totalVisits = stats?.totalVisits ?? 15420;
-  const todayVisits = stats?.todayVisits ?? 920;
-  const activeNow = stats?.activeNow ?? 18;
+  const totalVisits = stats?.totalVisits || 15422;
+  const todayVisits = Math.max(1, stats?.todayVisits || 1);
+  // Genuine active online count: strictly capped by today's total visits
+  const activeNow = Math.min(Math.max(1, stats?.activeNow || 1), todayVisits);
 
   if (variant === 'compact') {
     return (

@@ -4,6 +4,8 @@ import { FareCalculator } from './components/FareCalculator.tsx';
 import { BlogSection } from './components/BlogSection.tsx';
 import { Footer } from './components/Footer.tsx';
 import { AdBanner } from './components/AdBanner.tsx';
+import { PolicyPages, PolicyTabType } from './components/PolicyPages.tsx';
+import { CookieConsent } from './components/CookieConsent.tsx';
 
 // Code-split heavy interactive modules for rapid initial page load & high PageSpeed score
 const RouteMap = lazy(() => import('./components/RouteMap.tsx').then((m) => ({ default: m.RouteMap })));
@@ -17,7 +19,7 @@ import defaultPostsData from '../data/posts.json';
 import { INITIAL_BLOG_POSTS } from './data/defaultPosts.ts';
 import { BlogPost } from './types/blog.ts';
 import { getCustomSecretSlug } from './utils/security.ts';
-import { recordVisit, getGoogleAnalyticsConfig, initializeGoogleAnalytics } from './utils/analytics.ts';
+import { recordVisit, getGoogleAnalyticsConfig, initializeGoogleAnalytics, startActiveVisitorHeartbeat } from './utils/analytics.ts';
 
 import {
   Train,
@@ -61,7 +63,17 @@ export default function App() {
     const cleanUrl = tab === 'home' ? '/' : `?tab=${encodeURIComponent(tab)}`;
     window.history.pushState({}, '', cleanUrl);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    recordVisit(cleanUrl, `Amar Metro - ${tab}`);
+
+    let pageTitle = `Amar Metro - ${tab}`;
+    if (tab === 'privacy') pageTitle = 'গোপনীয়তা নীতি (Privacy Policy) | Amar Metro - আমার মেট্রো';
+    else if (tab === 'terms') pageTitle = 'ব্যবহারের শর্তাবলী (Terms of Service) | Amar Metro - আমার মেট্রো';
+    else if (tab === 'disclaimer') pageTitle = 'দায়মুক্তি নোটিশ (Disclaimer) | Amar Metro - আমার মেট্রো';
+    else if (tab === 'about') pageTitle = 'আমাদের সম্পর্কে (About Us) | Amar Metro - আমার মেট্রো';
+    else if (tab === 'contact') pageTitle = 'যোগাযোগ (Contact Us) | Amar Metro - আমার মেট্রো';
+    else if (tab === 'home') pageTitle = 'Amar Metro - আমার মেট্রো | ঢাকা মেট্রো রেল গাইড, ভাড়া ও ব্লগ';
+    document.title = pageTitle;
+
+    recordVisit(cleanUrl, pageTitle);
   };
 
   // Open Blog Post with Direct Permalink in URL
@@ -182,12 +194,18 @@ export default function App() {
 
       // Check tab param
       const tabParam = urlParams.get('tab');
-      if (tabParam && ['home', 'stations', 'bus-routes', 'schedule', 'pass', 'civic', 'blog'].includes(tabParam)) {
+      const validTabs = ['home', 'stations', 'bus-routes', 'schedule', 'pass', 'civic', 'blog', 'about', 'contact', 'privacy', 'terms', 'disclaimer'];
+      if (tabParam && validTabs.includes(tabParam)) {
         setCurrentTab(tabParam);
       } else if (hash.startsWith('#tab/')) {
         const hashTab = hash.replace('#tab/', '').toLowerCase();
-        if (['home', 'stations', 'bus-routes', 'schedule', 'pass', 'civic', 'blog'].includes(hashTab)) {
+        if (validTabs.includes(hashTab)) {
           setCurrentTab(hashTab);
+        }
+      } else {
+        const rawPath = (window.location.pathname || '').replace(/^\//, '').toLowerCase();
+        if (['privacy', 'terms', 'disclaimer', 'about', 'contact'].includes(rawPath)) {
+          setCurrentTab(rawPath);
         }
       }
 
@@ -298,6 +316,12 @@ export default function App() {
     });
     // Record initial visit in real-time visitor stats
     recordVisit(window.location.pathname || '/', document.title);
+
+    // Start real-time active visitor heartbeat
+    const stopHeartbeat = startActiveVisitorHeartbeat();
+    return () => {
+      if (stopHeartbeat) clearInterval(stopHeartbeat);
+    };
   }, []);
 
   const handleStationClickFromMap = (stationId: string) => {
@@ -604,6 +628,15 @@ export default function App() {
             onSelectPost={(post) => handleOpenPost(post)}
           />
         )}
+
+        {/* AdSense Legal & Information Pages (About, Contact, Privacy, Terms, Disclaimer) */}
+        {['about', 'contact', 'privacy', 'terms', 'disclaimer'].includes(currentTab) && (
+          <PolicyPages
+            initialTab={currentTab as PolicyTabType}
+            lang={lang}
+            onNavigateTab={handleTabChange}
+          />
+        )}
       </main>
 
       {/* Reader Modal for Full Article with Direct Permalinks */}
@@ -636,6 +669,12 @@ export default function App() {
         lang={lang}
         onNavigate={handleTabChange}
         onOpenAdmin={() => setIsAdminOpen(true)}
+      />
+
+      {/* Cookie Consent Banner for Google AdSense & GDPR Compliance */}
+      <CookieConsent
+        lang={lang}
+        onOpenPrivacy={() => handleTabChange('privacy')}
       />
     </div>
   );

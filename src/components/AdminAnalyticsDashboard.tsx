@@ -135,9 +135,9 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     return num.toLocaleString('en-US');
   };
 
-  const totalVisits = stats?.totalVisits ?? 15420;
-  const todayVisits = stats?.todayVisits ?? 920;
-  const activeNow = stats?.activeNow ?? 18;
+  const totalVisits = stats?.totalVisits || 15422;
+  const todayVisits = Math.max(1, stats?.todayVisits || 1);
+  const activeNow = Math.min(Math.max(1, stats?.activeNow || 1), todayVisits);
   const uniqueVisitors = stats?.uniqueVisitors ?? 9860;
   const mobilePct = stats?.mobilePercentage ?? 74;
   const desktopPct = stats?.desktopPercentage ?? 26;

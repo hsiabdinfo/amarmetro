@@ -112,6 +112,26 @@
         }
       }(window.location))
     </script>
+
+    <!-- Google AdSense Auto Verification Script Loader (Reads saved publisher ID) -->
+    <script>
+      (function() {
+        try {
+          var savedAds = localStorage.getItem('amarmetro_ads_config');
+          if (savedAds) {
+            var cfg = JSON.parse(savedAds);
+            var pubId = cfg && cfg.googleAdSense && cfg.googleAdSense.publisherId;
+            if (pubId && pubId.indexOf('pub-') !== -1) {
+              var s = document.createElement('script');
+              s.async = true;
+              s.crossOrigin = 'anonymous';
+              s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(pubId);
+              document.head.appendChild(s);
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased font-['SolaimanLipi','Hind_Siliguri','Noto_Sans_Bengali',sans-serif]">
     <div id="root">

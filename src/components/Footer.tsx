@@ -1,5 +1,5 @@
 import React from 'react';
-import { Train, Globe, MapPin, Bus, Building2, Lock } from 'lucide-react';
+import { Train, Globe, MapPin, Bus, Building2, Lock, ShieldCheck, FileText, AlertTriangle, Mail, Info } from 'lucide-react';
 import { VisitorStatsBadge } from './VisitorStatsBadge.tsx';
 
 interface FooterProps {
@@ -14,7 +14,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand Info */}
-          <div className="md:col-span-2 space-y-3">
+          <div className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
                 <Train className="w-5 h-5" />
@@ -24,26 +24,25 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
                 <span className="text-xs font-semibold text-slate-500">.com</span>
               </span>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-md">
+            <p className="text-xs text-slate-400 leading-relaxed">
               {lang === 'bn'
                 ? 'amarmetro.com হলো ঢাকা মেট্রো রেল ও ঢাকা মেট্রোপলিটন নাগরিক যোগাযোগের একটি সমন্বিত ডিজিটাল তথ্যভাণ্ডার। সঠিক মেট্রোরেল ভাড়া, স্টেশন গাইড, ঢাকা সিটি বাস রুট এবং প্রয়োজনীয় নাগরিক সেবাসমূহ সহজে পৌঁছে দেওয়াই আমাদের লক্ষ্য।'
                 : 'amarmetro.com is a digital portal for Dhaka Metro commuters and urban mobility, featuring fare calculators, station directories, city bus feeder lines, and civic services.'}
             </p>
-            <div className="flex items-center gap-2 pt-2 text-xs text-slate-500">
+            <div className="flex items-center gap-2 pt-1 text-xs text-slate-500">
               <span>MRT Line-6</span>
               <span aria-hidden="true">·</span>
               <span>ঢাকা মেট্রোপলিটন এরিয়া</span>
               <span aria-hidden="true">·</span>
               <span>বাংলাদেশ</span>
             </div>
-
             {/* Live Visitor Statistics Badge */}
             <div className="pt-2">
               <VisitorStatsBadge lang={lang} variant="compact" />
             </div>
           </div>
 
-          {/* Quick Links */}
+          {/* Quick Transit Links */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-white uppercase tracking-wider">
               {lang === 'bn' ? 'দ্রুত লিঙ্ক' : 'Transit Links'}
@@ -83,11 +82,84 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
               </li>
               <li>
                 <button
+                  onClick={() => onNavigate('pass')}
+                  className="hover:text-white transition-colors cursor-pointer"
+                >
+                  {lang === 'bn' ? 'এমআরটি পাস ও র‍্যাপিড পাস' : 'MRT Pass Guide'}
+                </button>
+              </li>
+              <li>
+                <button
                   onClick={() => onNavigate('blog')}
                   className="hover:text-white transition-colors cursor-pointer"
                 >
                   {lang === 'bn' ? 'মেট্রো ব্লগ ও ভ্রমণ সহায়িকা' : 'Metro Blog'}
                 </button>
+              </li>
+            </ul>
+          </div>
+
+          {/* AdSense Legal & Policy Links (MANDATORY FOR ADSENSE APPROVAL) */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{lang === 'bn' ? 'নীতিমালা ও পরিচিতি' : 'Policies & About'}</span>
+            </h4>
+            <ul className="space-y-2 text-xs">
+              <li>
+                <button
+                  onClick={() => onNavigate('about')}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Info className="w-3 h-3 text-slate-500" />
+                  <span>{lang === 'bn' ? 'আমাদের সম্পর্কে (About Us)' : 'About Us'}</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => onNavigate('contact')}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Mail className="w-3 h-3 text-slate-500" />
+                  <span>{lang === 'bn' ? 'যোগাযোগ (Contact Us)' : 'Contact Us'}</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => onNavigate('privacy')}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-emerald-300 font-medium"
+                >
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  <span>{lang === 'bn' ? 'গোপনীয়তা নীতি (Privacy Policy)' : 'Privacy Policy'}</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => onNavigate('terms')}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <FileText className="w-3 h-3 text-slate-500" />
+                  <span>{lang === 'bn' ? 'ব্যবহারের শর্তাবলী (Terms)' : 'Terms of Service'}</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => onNavigate('disclaimer')}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <AlertTriangle className="w-3 h-3 text-slate-500" />
+                  <span>{lang === 'bn' ? 'দায়মুক্তি নোটিশ (Disclaimer)' : 'Disclaimer'}</span>
+                </button>
+              </li>
+              <li>
+                <a
+                  href="/ads.txt"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition-colors inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-emerald-400"
+                >
+                  <span>ads.txt</span>
+                </a>
               </li>
             </ul>
           </div>
@@ -114,6 +186,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
           </div>
         </div>
 
+        {/* Bottom Bar with Copyright and Policy Quick Links */}
         <div className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p
             onClick={() => {
@@ -138,10 +211,26 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
           >
             © {new Date().getFullYear()} amarmetro.com. {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}
           </p>
-          <div className="flex items-center gap-4 flex-wrap justify-center">
-            <p className="flex items-center gap-1">
-              <span>{lang === 'bn' ? 'ঢাকার সম্মানিত যাত্রী ও নাগরিকদের জন্য নিবেদিত' : 'Crafted for Dhaka transit commuters'}</span>
-            </p>
+          <div className="flex items-center gap-3 sm:gap-4 flex-wrap justify-center text-[11px]">
+            <button onClick={() => onNavigate('about')} className="hover:text-slate-300 transition-colors cursor-pointer">
+              {lang === 'bn' ? 'আমাদের সম্পর্কে' : 'About'}
+            </button>
+            <span>·</span>
+            <button onClick={() => onNavigate('contact')} className="hover:text-slate-300 transition-colors cursor-pointer">
+              {lang === 'bn' ? 'যোগাযোগ' : 'Contact'}
+            </button>
+            <span>·</span>
+            <button onClick={() => onNavigate('privacy')} className="hover:text-emerald-400 text-slate-400 font-medium transition-colors cursor-pointer">
+              {lang === 'bn' ? 'গোপনীয়তা নীতি' : 'Privacy'}
+            </button>
+            <span>·</span>
+            <button onClick={() => onNavigate('terms')} className="hover:text-slate-300 transition-colors cursor-pointer">
+              {lang === 'bn' ? 'শর্তাবলী' : 'Terms'}
+            </button>
+            <span>·</span>
+            <button onClick={() => onNavigate('disclaimer')} className="hover:text-slate-300 transition-colors cursor-pointer">
+              {lang === 'bn' ? 'দায়মুক্তি' : 'Disclaimer'}
+            </button>
           </div>
         </div>
       </div>

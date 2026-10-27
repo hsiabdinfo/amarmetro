@@ -455,23 +455,39 @@ app.post("/api/stats/visit", (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+app.post("/api/stats/ping", (req, res) => {
+  const { visitorId } = req.body;
+  const vId = visitorId || "anon-" + Math.random().toString(36).substring(2, 8);
+  activeVisitorsMap.set(vId, Date.now());
+  const threeMinutesAgo = Date.now() - 3 * 60 * 1e3;
+  let realActive = 0;
+  for (const [key, lastSeen] of activeVisitorsMap.entries()) {
+    if (lastSeen < threeMinutesAgo) {
+      activeVisitorsMap.delete(key);
+    } else {
+      realActive++;
+    }
+  }
+  res.json({ success: true, activeNow: Math.max(1, realActive) });
+});
 app.get("/api/stats/summary", (_req, res) => {
   try {
     const analytics = getAnalyticsData();
     const now = Date.now();
     const fiveMinutesAgo = now - 5 * 60 * 1e3;
-    let activeNow = 0;
+    const threeMinutesAgo = now - 3 * 60 * 1e3;
+    let realActive = 0;
     for (const [key, lastSeen] of activeVisitorsMap.entries()) {
-      if (lastSeen < fiveMinutesAgo) {
+      if (lastSeen < threeMinutesAgo) {
         activeVisitorsMap.delete(key);
       } else {
-        activeNow++;
+        realActive++;
       }
     }
-    if (activeNow < 8) {
-      const hour = (/* @__PURE__ */ new Date()).getHours();
-      const base = hour >= 7 && hour <= 22 ? 14 + hour % 7 : 5;
-      activeNow = Math.max(activeNow, base);
+    let activeNow = Math.max(1, realActive);
+    const todayVisits = Math.max(analytics.todayVisits || 1, activeNow);
+    if (activeNow > todayVisits) {
+      activeNow = todayVisits;
     }
     const totalDevices = (analytics.mobileVisits || 1) + (analytics.desktopVisits || 1);
     const mobilePercentage = Math.round((analytics.mobileVisits || 1) / totalDevices * 100);
@@ -505,6 +521,36 @@ app.get("/api/stats/summary", (_req, res) => {
 app.get("/api/analytics/config", (_req, res) => {
   const cfg = getGaConfigFile();
   res.json({ success: true, config: cfg });
+});
+var CONTACTS_FILE = path.join(__dirname, "data", "contact_inquiries.json");
+app.post("/api/contact", (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body;
+    if (!name || !email || !message) {
+      return res.status(400).json({ success: false, message: "\u09B8\u0995\u09B2 \u0986\u09AC\u09B6\u09CD\u09AF\u0995\u09C0\u09DF \u09A4\u09A5\u09CD\u09AF \u09AA\u09CD\u09B0\u09A6\u09BE\u09A8 \u0995\u09B0\u09C1\u09A8\u0964" });
+    }
+    let inquiries = [];
+    if (fs.existsSync(CONTACTS_FILE)) {
+      try {
+        inquiries = JSON.parse(fs.readFileSync(CONTACTS_FILE, "utf-8"));
+      } catch {
+      }
+    }
+    const newInquiry = {
+      id: `inq-${Date.now()}`,
+      name: name.trim(),
+      email: email.trim(),
+      subject: (subject || "\u09B8\u09BE\u09A7\u09BE\u09B0\u09A3 \u099C\u09BF\u099C\u09CD\u099E\u09BE\u09B8\u09BE").trim(),
+      message: message.trim(),
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    inquiries.unshift(newInquiry);
+    fs.mkdirSync(path.dirname(CONTACTS_FILE), { recursive: true });
+    fs.writeFileSync(CONTACTS_FILE, JSON.stringify(inquiries.slice(0, 100), null, 2), "utf-8");
+    res.json({ success: true, message: "\u0986\u09AA\u09A8\u09BE\u09B0 \u09AC\u09BE\u09B0\u09CD\u09A4\u09BE\u099F\u09BF \u09B8\u09AB\u09B2\u09AD\u09BE\u09AC\u09C7 \u099C\u09AE\u09BE \u09B9\u09DF\u09C7\u099B\u09C7\u0964" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 app.post("/api/analytics/config", (req, res) => {
   try {
