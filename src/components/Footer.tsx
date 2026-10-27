@@ -1,5 +1,6 @@
 import React from 'react';
 import { Train, Globe, MapPin, Bus, Building2, Lock } from 'lucide-react';
+import { VisitorStatsBadge } from './VisitorStatsBadge.tsx';
 
 interface FooterProps {
   lang: 'bn' | 'en';
@@ -34,6 +35,11 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavigate, onOpenAdmin })
               <span>ঢাকা মেট্রোপলিটন এরিয়া</span>
               <span aria-hidden="true">·</span>
               <span>বাংলাদেশ</span>
+            </div>
+
+            {/* Live Visitor Statistics Badge */}
+            <div className="pt-2">
+              <VisitorStatsBadge lang={lang} variant="compact" />
             </div>
           </div>
 
