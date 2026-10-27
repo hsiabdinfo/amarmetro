@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BlogPost } from '../types/blog.ts';
 import { AdBanner } from './AdBanner.tsx';
 import { ShareModal } from './ShareModal.tsx';
@@ -26,6 +26,7 @@ interface ArticleModalProps {
   post: BlogPost | null;
   onClose: () => void;
   lang: 'bn' | 'en';
+  onUpdatePostLikes?: (postId: string, newLikes: number) => void;
 }
 
 interface CommentUser {
@@ -35,9 +36,31 @@ interface CommentUser {
   avatar?: string;
 }
 
-export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang }) => {
-  const [likes, setLikes] = useState(42);
-  const [hasLiked, setHasLiked] = useState(false);
+export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang, onUpdatePostLikes }) => {
+  const [likes, setLikes] = useState(() => post?.likes ?? 0);
+  const [hasLiked, setHasLiked] = useState(() => {
+    try {
+      if (!post) return false;
+      const likedIds = JSON.parse(localStorage.getItem('amarmetro_liked_post_ids') || '[]');
+      return Array.isArray(likedIds) && likedIds.includes(post.id);
+    } catch {
+      return false;
+    }
+  });
+
+  // Always keep like count synchronized with incoming post data
+  useEffect(() => {
+    if (post) {
+      setLikes(post.likes ?? 0);
+      try {
+        const likedIds = JSON.parse(localStorage.getItem('amarmetro_liked_post_ids') || '[]');
+        setHasLiked(Array.isArray(likedIds) && likedIds.includes(post.id));
+      } catch {
+        setHasLiked(false);
+      }
+    }
+  }, [post?.id, post?.likes]);
+  const [likeToast, setLikeToast] = useState<string | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedPermalink, setCopiedPermalink] = useState(false);
 
@@ -86,9 +109,8 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
   if (!post) return null;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://amarmetro.com';
-  const rawPath = typeof window !== 'undefined' ? window.location.pathname : '/';
-  const cleanPath = rawPath.endsWith('/') ? rawPath : `${rawPath}/`;
-  const permalink = `${origin}${cleanPath}?post=${encodeURIComponent(post.slug || post.id)}`;
+  // Dedicated clean post permalink without trailing slash anomalies
+  const permalink = `${origin}/?post=${encodeURIComponent(post.slug || post.id)}`;
   const encodedPermalink = encodeURIComponent(permalink);
   const encodedTitle = encodeURIComponent(`${post.title} - ঢাকা মেট্রো রেল গাইড | amarmetro.com`);
 
@@ -105,21 +127,69 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
       try {
         await navigator.share({
           title: `${post.title} | Amar Metro - আমার মেট্রো`,
-          text: post.excerpt,
+          text: `${post.title}\n\nপোস্টটি বিস্তারিত পড়ুন:`,
           url: permalink,
         });
         return;
       } catch (e) {
-        // Fallback to copying permalink
+        // Fallback to opening share modal
       }
     }
-    handleCopyPermalink();
+    setIsShareModalOpen(true);
   };
 
-  const handleLike = () => {
-    if (!hasLiked) {
-      setLikes(likes + 1);
-      setHasLiked(true);
+  const handleLike = async () => {
+    if (hasLiked) {
+      // Toggle unlike
+      const newCount = Math.max(0, likes - 1);
+      setLikes(newCount);
+      setHasLiked(false);
+      onUpdatePostLikes?.(post.id, newCount);
+
+      try {
+        const likedIds = JSON.parse(localStorage.getItem('amarmetro_liked_post_ids') || '[]');
+        const updated = likedIds.filter((id: string) => id !== post.id);
+        localStorage.setItem('amarmetro_liked_post_ids', JSON.stringify(updated));
+
+        const cached = localStorage.getItem('amarmetro_posts_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const updatedPosts = parsed.map((p: BlogPost) => (p.id === post.id ? { ...p, likes: newCount } : p));
+          localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+        }
+
+        await fetch(`/api/posts/${post.id}/unlike`, { method: 'POST' });
+      } catch (e) {
+        console.error('Error toggling unlike:', e);
+      }
+      return;
+    }
+
+    // Like post
+    const newCount = likes + 1;
+    setLikes(newCount);
+    setHasLiked(true);
+    onUpdatePostLikes?.(post.id, newCount);
+    setLikeToast(lang === 'bn' ? 'ধন্যবাদ! আপনার লাইক সংরক্ষিত হয়েছে।' : 'Thank you for liking!');
+    setTimeout(() => setLikeToast(null), 3000);
+
+    try {
+      const likedIds = JSON.parse(localStorage.getItem('amarmetro_liked_post_ids') || '[]');
+      if (!likedIds.includes(post.id)) {
+        likedIds.push(post.id);
+        localStorage.setItem('amarmetro_liked_post_ids', JSON.stringify(likedIds));
+      }
+
+      const cached = localStorage.getItem('amarmetro_posts_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const updatedPosts = parsed.map((p: BlogPost) => (p.id === post.id ? { ...p, likes: newCount } : p));
+        localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+      }
+
+      await fetch(`/api/posts/${post.id}/like`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Backend like update failed, saved to local cache:', e);
     }
   };
 
@@ -261,22 +331,30 @@ export const ArticleModal: React.FC<ArticleModalProps> = ({ post, onClose, lang 
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 relative">
+                  {likeToast && (
+                    <div className="absolute -top-10 right-0 bg-emerald-800 text-white text-[11px] font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap animate-fadeIn z-30">
+                      {likeToast}
+                    </div>
+                  )}
+
                   <button
                     onClick={handleLike}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
                       hasLiked
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-400 font-bold shadow-2xs'
                         : 'text-slate-600 border-slate-200 hover:bg-slate-50'
                     }`}
+                    title={hasLiked ? 'লাইক প্রত্যাহার করুন' : 'এই পোস্টে লাইক দিন'}
                   >
-                    <ThumbsUp className={`w-4 h-4 ${hasLiked ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <ThumbsUp className={`w-4 h-4 ${hasLiked ? 'text-emerald-600 fill-emerald-600' : 'text-slate-400'}`} />
                     <span>{likes}</span>
                   </button>
 
                   <button
-                    onClick={() => setIsShareModalOpen(true)}
+                    onClick={handleNativeShare}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                    title="পোস্টের লিংক শেয়ার করুন"
                   >
                     <Share2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>শেয়ার</span>
