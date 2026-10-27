@@ -23,7 +23,7 @@ export function renderInlineMarkdown(text: string): React.ReactNode {
   let keyIndex = 0;
 
   // Regex pattern matching any of the inline elements
-  const pattern = /(!?\[(.*?)\]\((.*?)\))|(\*\*(.*?)\*\*)|(__([^_]+)__)|(\*(.*?)\*)|(_([^_]+)_)|(<u>(.*?)<\/u>)|(\+\+(.*?)\+\+)|(~~(.*?)~~)|(<del>(.*?)<\/del>)|(`(.*?)`)|(==(.*?)==)|(<mark>(.*?)<\/mark>)/;
+  const pattern = /(!?\[(.*?)\]\((.*?)\))|(\*\*(.*?)\*\*)|(__([^_]+)__)|(<u>(.*?)<\/u>)|(\+\+(.*?)\+\+)|(~~(.*?)~~)|(<del>(.*?)<\/del>)|(==(.*?)==)|(<mark>(.*?)<\/mark>)|(`(.*?)`)|(<sub>(.*?)<\/sub>)|(<sup>(.*?)<\/sup>)|(<span\s+class="badge-(green|amber|rose|blue)">(.*?)<\/span>)|(\*(.*?)\*)|(_([^_]+)_)/;
 
   while (remaining.length > 0) {
     const match = remaining.match(pattern);
@@ -133,6 +133,48 @@ export function renderInlineMarkdown(text: string): React.ReactNode {
           {inner}
         </code>
       );
+    }
+    // Subscript: <sub>text</sub>
+    else if (matchedStr.startsWith('<sub>') && matchedStr.endsWith('</sub>')) {
+      const inner = matchedStr.slice(5, -6);
+      parts.push(
+        <sub key={`sub-${keyIndex++}`} className="text-[10px] text-slate-700 font-semibold align-sub">
+          {renderInlineMarkdown(inner)}
+        </sub>
+      );
+    }
+    // Superscript: <sup>text</sup>
+    else if (matchedStr.startsWith('<sup>') && matchedStr.endsWith('</sup>')) {
+      const inner = matchedStr.slice(5, -6);
+      parts.push(
+        <sup key={`sup-${keyIndex++}`} className="text-[10px] text-emerald-800 font-bold align-super">
+          {renderInlineMarkdown(inner)}
+        </sup>
+      );
+    }
+    // Colored Badges: <span class="badge-green|amber|rose|blue">text</span>
+    else if (matchedStr.startsWith('<span class="badge-') && matchedStr.endsWith('</span>')) {
+      const badgeMatch = matchedStr.match(/^<span class="badge-(green|amber|rose|blue)">(.*?)<\/span>$/);
+      if (badgeMatch) {
+        const color = badgeMatch[1];
+        const inner = badgeMatch[2];
+        const colorClasses: Record<string, string> = {
+          green: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          amber: 'bg-amber-100 text-amber-900 border-amber-200',
+          rose: 'bg-rose-100 text-rose-800 border-rose-200',
+          blue: 'bg-blue-100 text-blue-800 border-blue-200',
+        };
+        parts.push(
+          <span
+            key={`badge-${keyIndex++}`}
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${colorClasses[color] || colorClasses.green} mx-0.5 shadow-2xs`}
+          >
+            {renderInlineMarkdown(inner)}
+          </span>
+        );
+      } else {
+        parts.push(matchedStr);
+      }
     }
     // Italic: *text* or _text_
     else if ((matchedStr.startsWith('*') && matchedStr.endsWith('*')) || (matchedStr.startsWith('_') && matchedStr.endsWith('_'))) {
@@ -259,23 +301,48 @@ export function renderRichContent(content: string): React.ReactNode {
         quoteLines.push(lines[i].replace(/^>\s?/, ''));
       }
       const fullQuote = quoteLines.join(' ');
-      const isInfo = fullQuote.toLowerCase().includes('[!info]') || fullQuote.includes('💡') || fullQuote.toLowerCase().includes('নোট:');
+      const lower = fullQuote.toLowerCase();
+      
+      const isWarning = lower.includes('[!warning]') || fullQuote.includes('⚠️') || lower.includes('সতর্কতা:');
+      const isSuccess = lower.includes('[!success]') || fullQuote.includes('✅') || lower.includes('সফল:');
+      const isDanger = lower.includes('[!danger]') || lower.includes('[!alert]') || fullQuote.includes('🚨') || lower.includes('জরুরি:');
+      const isInfo = lower.includes('[!info]') || fullQuote.includes('💡') || lower.includes('নোট:') || lower.includes('তথ্য:');
+
+      let calloutClass = 'bg-slate-50 border-slate-400 text-slate-700 italic';
+      let iconColor = 'text-slate-500';
+      let icon = null;
+
+      if (isDanger) {
+        calloutClass = 'bg-rose-50/80 border-rose-500 text-rose-950 font-medium';
+        iconColor = 'text-rose-600';
+        icon = <span className="text-base leading-none shrink-0">🚨</span>;
+      } else if (isWarning) {
+        calloutClass = 'bg-amber-50/80 border-amber-500 text-amber-950 font-medium';
+        iconColor = 'text-amber-600';
+        icon = <span className="text-base leading-none shrink-0">⚠️</span>;
+      } else if (isSuccess) {
+        calloutClass = 'bg-emerald-50/80 border-emerald-600 text-emerald-950 font-medium';
+        iconColor = 'text-emerald-600';
+        icon = <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />;
+      } else if (isInfo) {
+        calloutClass = 'bg-blue-50/80 border-blue-500 text-blue-950 font-medium';
+        iconColor = 'text-blue-600';
+        icon = <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />;
+      }
+
+      const cleanText = fullQuote
+        .replace(/\[!(INFO|WARNING|SUCCESS|DANGER|ALERT)\]/gi, '')
+        .trim();
 
       elements.push(
         <blockquote
           key={`quote-${index++}`}
-          className={`my-4 p-4 rounded-xl border-l-4 leading-relaxed ${
-            isInfo
-              ? 'bg-emerald-50/70 border-emerald-600 text-emerald-950 font-medium'
-              : 'bg-slate-50 border-slate-400 text-slate-700 italic'
-          }`}
+          className={`my-4 p-4 rounded-xl border-l-4 leading-relaxed ${calloutClass}`}
         >
           <div className="flex items-start gap-2.5">
-            {isInfo ? (
-              <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            ) : null}
-            <div className="text-sm">
-              {renderInlineMarkdown(fullQuote.replace(/\[!INFO\]/i, '').trim())}
+            {icon}
+            <div className="text-sm flex-1">
+              {renderInlineMarkdown(cleanText)}
             </div>
           </div>
         </blockquote>
@@ -283,7 +350,32 @@ export function renderRichContent(content: string): React.ReactNode {
       continue;
     }
 
-    // 7. Table handling: | Col 1 | Col 2 |
+    // 7. Details / Accordion: <details><summary>Q</summary>A</details>
+    if (trimmed.startsWith('<details') || trimmed.includes('<summary>')) {
+      let detailsContent = rawLine;
+      while (i + 1 < lines.length && !lines[i].includes('</details>')) {
+        i++;
+        detailsContent += '\n' + lines[i];
+      }
+      const summaryMatch = detailsContent.match(/<summary>(.*?)<\/summary>/is);
+      const summaryText = summaryMatch ? summaryMatch[1].trim() : 'বিস্তারিত দেখুন';
+      const bodyText = detailsContent.replace(/<details.*?>/i, '').replace(/<\/details>/i, '').replace(/<summary>.*?<\/summary>/is, '').trim();
+
+      elements.push(
+        <details key={`details-${index++}`} className="my-4 rounded-xl border border-slate-200 bg-white overflow-hidden group shadow-2xs">
+          <summary className="p-3.5 sm:p-4 font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 cursor-pointer flex items-center justify-between text-sm select-none transition-colors">
+            <span>{summaryText}</span>
+            <span className="text-xs text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div className="p-4 text-sm text-slate-700 border-t border-slate-100 bg-white leading-relaxed">
+            {renderRichContent(bodyText)}
+          </div>
+        </details>
+      );
+      continue;
+    }
+
+    // 8. Table handling: | Col 1 | Col 2 |
     if (trimmed.startsWith('|') && trimmed.endsWith('|') && i + 1 < lines.length && lines[i + 1].includes('|-')) {
       const headers = trimmed.split('|').filter(c => c.trim().length > 0).map(c => c.trim());
       i += 2; // skip header and divider line
@@ -324,10 +416,32 @@ export function renderRichContent(content: string): React.ReactNode {
       continue;
     }
 
-    // 8. Bullet List: - item or * item
+    // 9. Checklist Task item: - [ ] or - [x]
+    if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('- [x] ') || trimmed.startsWith('* [ ] ') || trimmed.startsWith('* [x] ')) {
+      const isChecked = trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ');
+      const text = trimmed.substring(6);
+      elements.push(
+        <div key={`task-${index++}`} className="flex items-start gap-2.5 my-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            readOnly
+            className="w-4 h-4 rounded text-emerald-600 focus:ring-0 mt-0.5 cursor-default pointer-events-none"
+          />
+          <span className={`text-slate-700 leading-snug ${isChecked ? 'line-through text-slate-400' : ''}`}>
+            {renderInlineMarkdown(text)}
+          </span>
+        </div>
+      );
+      continue;
+    }
+
+    // 10. Bullet List: - item or * item
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
       const listItems: string[] = [trimmed.substring(2)];
       while (i + 1 < lines.length && (lines[i + 1].trim().startsWith('- ') || lines[i + 1].trim().startsWith('* '))) {
+        // Skip task items
+        if (lines[i + 1].trim().startsWith('- [') || lines[i + 1].trim().startsWith('* [')) break;
         i++;
         listItems.push(lines[i].trim().substring(2));
       }
@@ -345,7 +459,7 @@ export function renderRichContent(content: string): React.ReactNode {
       continue;
     }
 
-    // 9. Numbered List: 1. item
+    // 11. Numbered List: 1. item
     if (/^\d+\.\s/.test(trimmed)) {
       const listItems: string[] = [trimmed.replace(/^\d+\.\s/, '')];
       while (i + 1 < lines.length && /^\d+\.\s/.test(lines[i + 1].trim())) {
@@ -365,7 +479,7 @@ export function renderRichContent(content: string): React.ReactNode {
       continue;
     }
 
-    // 10. Standard Paragraph
+    // 12. Standard Paragraph
     elements.push(
       <p key={`p-${index++}`} className="text-slate-700 leading-relaxed text-sm sm:text-base my-2">
         {renderInlineMarkdown(rawLine)}
