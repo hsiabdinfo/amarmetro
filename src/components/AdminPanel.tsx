@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BlogPost, PostFormData } from '../types/blog.ts';
+import { BlogPost, PostFormData, PresetImage } from '../types/blog.ts';
 import { METRO_CATEGORIES, PRESET_IMAGE_OPTIONS } from '../data/metroData.ts';
 import {
   X,
@@ -38,6 +38,9 @@ import {
   Code,
   Sliders,
   Layers,
+  RotateCcw,
+  Activity,
+  BarChart2,
 } from 'lucide-react';
 import {
   verifyAdminPassword,
@@ -53,6 +56,7 @@ import {
 import { AdConfig, DEFAULT_AD_CONFIG, AD_SLOTS_DIRECTORY, AdSlotConfig, AdSlotMeta } from '../types/ad.ts';
 import { getAdConfig, saveAdConfig } from '../utils/ads.ts';
 import { RichPostEditor } from './RichPostEditor.tsx';
+import { AdminAnalyticsDashboard } from './AdminAnalyticsDashboard.tsx';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -90,8 +94,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [customSlug, setCustomSlug] = useState(() => getCustomSecretSlug());
   const [slugSavedMsg, setSlugSavedMsg] = useState('');
 
-  // Admin tabs: 'create' | 'manage' | 'ads' | 'security' | 'guide'
-  const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'ads' | 'security' | 'guide'>('create');
+  // Admin tabs: 'create' | 'manage' | 'ads' | 'analytics' | 'security' | 'guide'
+  const [adminTab, setAdminTab] = useState<'create' | 'manage' | 'ads' | 'analytics' | 'security' | 'guide'>('create');
 
   // Ads & AdSense Management State
   const [adConfig, setAdConfig] = useState<AdConfig>(DEFAULT_AD_CONFIG);
@@ -129,14 +133,129 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Load Ads Config when panel opens
+  // Dynamic Preset Images state (with localStorage & API persistence)
+  const [presetImages, setPresetImages] = useState<PresetImage[]>(() => {
+    try {
+      const cached = localStorage.getItem('amarmetro_preset_images');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return PRESET_IMAGE_OPTIONS.map((p, i) => ({ id: `preset-${i + 1}`, name: p.name, url: p.url, isDefault: true }));
+  });
+  const [isAddingPreset, setIsAddingPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetUrl, setNewPresetUrl] = useState('');
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [isUploadingPreset, setIsUploadingPreset] = useState(false);
+
+  // Load Ads Config and Preset Images when panel opens
   useEffect(() => {
     if (isOpen) {
       getAdConfig().then((cfg) => {
         setAdConfig(cfg);
       });
+      fetchPresetImages();
     }
   }, [isOpen]);
+
+  const fetchPresetImages = async () => {
+    try {
+      const res = await fetch('/api/preset-images');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.images) && data.images.length > 0) {
+          setPresetImages(data.images);
+          localStorage.setItem('amarmetro_preset_images', JSON.stringify(data.images));
+        }
+      }
+    } catch (e) {
+      console.warn('Preset images fetch failed, using local/cache:', e);
+    }
+  };
+
+  const handleAddNewPresetImage = async (name: string, url: string, base64Data?: string) => {
+    if (!url && !base64Data) {
+      showNotification('error', lang === 'bn' ? 'ছবির লিংক বা ফাইল প্রদান করুন' : 'Provide image URL or file');
+      return;
+    }
+    setIsSavingPreset(true);
+    let serverSaved = false;
+
+    try {
+      const res = await fetch('/api/preset-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name || 'মেট্রোরেল ছবি', url, base64Data }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.images) {
+          serverSaved = true;
+          setPresetImages(data.images);
+          localStorage.setItem('amarmetro_preset_images', JSON.stringify(data.images));
+          showNotification('success', lang === 'bn' ? 'নতুন প্রস্তুত ছবি সফলভাবে লাইব্রেরিতে যুক্ত হয়েছে!' : 'Preset image added successfully!');
+        }
+      }
+    } catch (err: any) {
+      console.warn('Backend preset save failed, saving locally:', err);
+    }
+
+    if (!serverSaved) {
+      const newPreset: PresetImage = {
+        id: `preset-${Date.now()}`,
+        name: name || 'মেট্রোরেল ছবি',
+        url: url || base64Data || '',
+        isDefault: false,
+      };
+      const updated = [...presetImages, newPreset];
+      setPresetImages(updated);
+      localStorage.setItem('amarmetro_preset_images', JSON.stringify(updated));
+      showNotification('success', lang === 'bn' ? 'নতুন প্রস্তুত ছবি লোকাল লাইব্রেরিতে যুক্ত হয়েছে!' : 'Preset image added!');
+    }
+
+    setIsAddingPreset(false);
+    setNewPresetName('');
+    setNewPresetUrl('');
+    setIsSavingPreset(false);
+  };
+
+  const handleDeletePresetImage = async (e: React.MouseEvent, presetId: string, _presetName: string) => {
+    e.stopPropagation();
+
+    try {
+      const res = await fetch(`/api/preset-images/${presetId}`, { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.images) {
+          setPresetImages(data.images);
+          localStorage.setItem('amarmetro_preset_images', JSON.stringify(data.images));
+          showNotification('success', lang === 'bn' ? 'ছবিটি প্রস্তুত তালিকা থেকে মুছে ফেলা হয়েছে' : 'Preset image deleted');
+          return;
+        }
+      }
+    } catch (err: any) {
+      console.warn('Backend delete preset failed, removing locally:', err);
+    }
+
+    const updated = presetImages.filter((img) => img.id !== presetId && img.url !== presetId);
+    setPresetImages(updated);
+    localStorage.setItem('amarmetro_preset_images', JSON.stringify(updated));
+    showNotification('success', lang === 'bn' ? 'ছবিটি প্রস্তুত তালিকা থেকে মুছে ফেলা হয়েছে' : 'Preset image deleted');
+  };
+
+  const handleResetDefaultPresets = () => {
+    const defaults = PRESET_IMAGE_OPTIONS.map((p, i) => ({
+      id: `preset-${i + 1}`,
+      name: p.name,
+      url: p.url,
+      isDefault: true,
+    }));
+    setPresetImages(defaults);
+    localStorage.setItem('amarmetro_preset_images', JSON.stringify(defaults));
+    showNotification('success', lang === 'bn' ? 'ডিফল্ট ছবি তালিকা রিস্টোর করা হয়েছে' : 'Default presets restored');
+  };
 
   // High-performance image processor: compresses large mobile photos & uploads (backend API with local data URL fallback)
   const compressAndProcessImage = (file: File): Promise<string> => {
@@ -664,11 +783,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       console.warn('Backend update failed, updating static local state:', err);
     }
 
+    // Always sync local cache with the updated post so UI and localStorage never become stale
+    const existingCached = localStorage.getItem('amarmetro_posts_cache');
+    const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
+    const updatedPosts = currentPosts.map((p) => (p.id === editingPost.id ? { ...p, ...editingPost } : p));
+    localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
+
     if (!serverUpdated) {
-      const existingCached = localStorage.getItem('amarmetro_posts_cache');
-      const currentPosts: BlogPost[] = existingCached ? JSON.parse(existingCached) : posts;
-      const updatedPosts = currentPosts.map((p) => (p.id === editingPost.id ? editingPost : p));
-      localStorage.setItem('amarmetro_posts_cache', JSON.stringify(updatedPosts));
       showNotification('success', lang === 'bn' ? 'পোস্ট সফলভাবে আপডেট হয়েছে (লোকাল স্টোরেজ)' : 'Post updated locally');
     }
 
@@ -1003,34 +1124,169 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Presets Option */}
+                  {/* Dynamic Presets Library Section */}
                   <div>
-                    <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
-                      {lang === 'bn' ? 'অথবা নিচে থেকে মেট্রোরেলের প্রস্তুত ছবি বেছে নিন (১-ক্লিক):' : 'Or pick from metro presets (1-click):'}
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      {PRESET_IMAGE_OPTIONS.map((img, i) => (
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{lang === 'bn' ? 'মেট্রোরেলের প্রস্তুত / ডিফল্ট ছবি লাইব্রেরি:' : 'Metro Preset Images Library:'}</span>
+                        <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-bold">
+                          {presetImages.length}
+                        </span>
+                      </span>
+
+                      <div className="flex items-center gap-2">
                         <button
-                          key={i}
                           type="button"
-                          onClick={() => setEditingPost({ ...editingPost, coverImage: img.url })}
-                          className={`group relative h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                            editingPost.coverImage === img.url
-                              ? 'border-emerald-600 ring-2 ring-emerald-300'
-                              : 'border-slate-200 hover:border-slate-400'
-                          }`}
+                          onClick={() => setIsAddingPreset(!isAddingPreset)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                          title="নতুন ডিফল্ট ছবি লাইব্রেরিতে যুক্ত করুন"
                         >
-                          <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                          <div className="absolute inset-x-0 bottom-0 bg-slate-900/70 p-0.5 text-[8px] text-white font-medium truncate text-center">
-                            {img.name}
-                          </div>
-                          {editingPost.coverImage === img.url && (
-                            <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-                              <Check className="w-2.5 h-2.5" />
-                            </div>
-                          )}
+                          <PlusCircle className="w-3 h-3" />
+                          <span>{lang === 'bn' ? '+ নতুন ছবি যুক্ত করুন' : '+ Add Image'}</span>
                         </button>
-                      ))}
+
+                        <button
+                          type="button"
+                          onClick={handleResetDefaultPresets}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                          title="আদি ডিফল্ট ছবি পুনরুদ্ধার"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>রিস্টোর</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Inline Form to Add New Preset Image */}
+                    {isAddingPreset && (
+                      <div className="p-3 bg-emerald-50/90 border border-emerald-300 rounded-xl mb-3 space-y-2 animate-fadeIn text-xs">
+                        <div className="flex items-center justify-between font-bold text-emerald-900">
+                          <span>{lang === 'bn' ? 'ডিফল্ট লাইব্রেরিতে নতুন ছবি যোগ করুন:' : 'Add New Preset to Library:'}</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingPreset(false)}
+                            className="text-slate-400 hover:text-slate-700"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder={lang === 'bn' ? 'ছবির নাম / শিরোনাম (যেমন: দিয়াবাড়ি ডিপো)' : 'Image title'}
+                            value={newPresetName}
+                            onChange={(e) => setNewPresetName(e.target.value)}
+                            className="px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                          />
+
+                          <input
+                            type="text"
+                            placeholder={lang === 'bn' ? 'ছবির ওয়েব লিংক (URL) অথবা নিচে ফাইল দিন' : 'Image URL'}
+                            value={newPresetUrl}
+                            onChange={(e) => setNewPresetUrl(e.target.value)}
+                            className="px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg text-slate-800 font-mono focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-bold cursor-pointer transition-colors text-[11px]">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{isUploadingPreset ? 'আপলোড হচ্ছে...' : '📁 ডিভাইস থেকে ছবি বেছে নিন'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={isUploadingPreset}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setIsUploadingPreset(true);
+                                try {
+                                  const url = await compressAndProcessImage(file);
+                                  if (url) {
+                                    setNewPresetUrl(url);
+                                    showNotification('success', 'ছবি সফলভাবে লোড হয়েছে!');
+                                  }
+                                } catch (err: any) {
+                                  showNotification('error', 'ছবি প্রসেস ব্যর্থ: ' + err.message);
+                                } finally {
+                                  setIsUploadingPreset(false);
+                                }
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingPreset(false)}
+                              className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold"
+                            >
+                              বাতিল
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSavingPreset || (!newPresetUrl.trim())}
+                              onClick={() => handleAddNewPresetImage(newPresetName, newPresetUrl)}
+                              className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg font-bold transition-colors"
+                            >
+                              {isSavingPreset ? 'সংরক্ষণ হচ্ছে...' : 'লাইব্রেরিতে সংরক্ষণ'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Grid of Preset Images with Delete button */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      {presetImages.map((img) => {
+                        const isSelected = editingPost.coverImage === img.url;
+                        return (
+                          <div
+                            key={img.id}
+                            className={`group relative h-20 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-emerald-600 ring-2 ring-emerald-400 shadow-xs'
+                                : 'border-slate-200 hover:border-slate-400'
+                            }`}
+                            onClick={() => setEditingPost({ ...editingPost, coverImage: img.url })}
+                          >
+                            <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                            <div className="absolute inset-x-0 bottom-0 bg-slate-900/75 p-1 text-[8px] text-white font-medium truncate text-center">
+                              {img.name}
+                            </div>
+
+                            {isSelected && (
+                              <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                <Check className="w-2.5 h-2.5" />
+                              </div>
+                            )}
+
+                            {/* Delete Button to delete unwanted default preset image */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeletePresetImage(e, img.id, img.name)}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-sm opacity-80 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title={`"${img.name}" ছবিটি ডিফল্ট তালিকা থেকে মুছে ফেলুন`}
+                            >
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {/* Add Button Tile in Grid */}
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingPreset(true)}
+                        className="h-20 rounded-xl border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-emerald-700 transition-all cursor-pointer p-1 text-center"
+                        title="নতুন ডিফল্ট ছবি যোগ করুন"
+                      >
+                        <PlusCircle className="w-4 h-4 text-emerald-600" />
+                        <span className="text-[9px] font-bold">+ নতুন ছবি</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1124,6 +1380,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     <Megaphone className="w-4 h-4" />
                     <span>{lang === 'bn' ? 'বিজ্ঞাপন ও অ্যাডসেন্স' : 'Ads & AdSense'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminTab('analytics')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
+                      adminTab === 'analytics'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Activity className="w-4 h-4" />
+                    <span>{lang === 'bn' ? 'ভিজিটর ও গুগল এনালিটিকস' : 'Analytics & GA4'}</span>
                   </button>
 
                   <button
@@ -1284,38 +1552,180 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       )}
                     </div>
 
-                    {/* Presets Option */}
+                    {/* Dynamic Presets Library Section */}
                     <div>
-                      <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
-                        {lang === 'bn' ? 'অথবা মেট্রোরেলের প্রস্তুত ছবি নির্বাচন করুন:' : 'Or choose from presets:'}
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2">
-                        {PRESET_IMAGE_OPTIONS.map((img, i) => (
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                          <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{lang === 'bn' ? 'মেট্রোরেলের প্রস্তুত ছবি লাইব্রেরি:' : 'Metro Preset Images Library:'}</span>
+                          <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-bold">
+                            {presetImages.length}
+                          </span>
+                        </span>
+
+                        <div className="flex items-center gap-2">
                           <button
-                            key={i}
                             type="button"
-                            onClick={() => setFormData({ ...formData, coverImage: img.url })}
-                            className={`group relative h-20 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                              formData.coverImage === img.url
-                                ? 'border-emerald-600 ring-2 ring-emerald-300'
-                                : 'border-slate-200 hover:border-slate-400'
-                            }`}
+                            onClick={() => setIsAddingPreset(!isAddingPreset)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                            title="নতুন ডিফল্ট ছবি লাইব্রেরিতে যুক্ত করুন"
                           >
-                            <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                            <div className="absolute inset-x-0 bottom-0 bg-slate-900/70 p-1 text-[9px] text-white font-medium truncate text-center">
-                              {img.name}
-                            </div>
+                            <PlusCircle className="w-3 h-3" />
+                            <span>{lang === 'bn' ? '+ নতুন ছবি যুক্ত করুন' : '+ Add Image'}</span>
                           </button>
-                        ))}
+
+                          <button
+                            type="button"
+                            onClick={handleResetDefaultPresets}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                            title="আদি ডিফল্ট ছবি পুনরুদ্ধার"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>রিস্টোর</span>
+                          </button>
+                        </div>
                       </div>
 
-                      <input
-                        type="text"
-                        placeholder={lang === 'bn' ? 'বর্তমান ছবির লিংক বা URL' : 'Current image URL'}
-                        value={formData.coverImage}
-                        onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700"
-                      />
+                      {/* Inline Form to Add New Preset Image */}
+                      {isAddingPreset && (
+                        <div className="p-3 bg-emerald-50/90 border border-emerald-300 rounded-xl mb-3 space-y-2 animate-fadeIn text-xs">
+                          <div className="flex items-center justify-between font-bold text-emerald-900">
+                            <span>{lang === 'bn' ? 'ডিফল্ট লাইব্রেরিতে নতুন ছবি যোগ করুন:' : 'Add New Preset to Library:'}</span>
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingPreset(false)}
+                              className="text-slate-400 hover:text-slate-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              placeholder={lang === 'bn' ? 'ছবির নাম / শিরোনাম (যেমন: দিয়াবাড়ি ডিপো)' : 'Image title'}
+                              value={newPresetName}
+                              onChange={(e) => setNewPresetName(e.target.value)}
+                              className="px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                            />
+
+                            <input
+                              type="text"
+                              placeholder={lang === 'bn' ? 'ছবির ওয়েব লিংক (URL) অথবা নিচে ফাইল দিন' : 'Image URL'}
+                              value={newPresetUrl}
+                              onChange={(e) => setNewPresetUrl(e.target.value)}
+                              className="px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg text-slate-800 font-mono focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-bold cursor-pointer transition-colors text-[11px]">
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>{isUploadingPreset ? 'আপলোড হচ্ছে...' : '📁 ডিভাইস থেকে ছবি বেছে নিন'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingPreset}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setIsUploadingPreset(true);
+                                  try {
+                                    const url = await compressAndProcessImage(file);
+                                    if (url) {
+                                      setNewPresetUrl(url);
+                                      showNotification('success', 'ছবি সফলভাবে লোড হয়েছে!');
+                                    }
+                                  } catch (err: any) {
+                                    showNotification('error', 'ছবি প্রসেস ব্যর্থ: ' + err.message);
+                                  } finally {
+                                    setIsUploadingPreset(false);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingPreset(false)}
+                                className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold"
+                              >
+                                বাতিল
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingPreset || (!newPresetUrl.trim())}
+                                onClick={() => handleAddNewPresetImage(newPresetName, newPresetUrl)}
+                                className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg font-bold transition-colors"
+                              >
+                                {isSavingPreset ? 'সংরক্ষণ হচ্ছে...' : 'লাইব্রেরিতে সংরক্ষণ'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Grid of Preset Images */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-3">
+                        {presetImages.map((img) => {
+                          const isSelected = formData.coverImage === img.url;
+                          return (
+                            <div
+                              key={img.id}
+                              className={`group relative h-20 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'border-emerald-600 ring-2 ring-emerald-400 shadow-xs'
+                                  : 'border-slate-200 hover:border-slate-400'
+                              }`}
+                              onClick={() => setFormData({ ...formData, coverImage: img.url })}
+                            >
+                              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                              <div className="absolute inset-x-0 bottom-0 bg-slate-900/75 p-1 text-[8px] text-white font-medium truncate text-center">
+                                {img.name}
+                              </div>
+
+                              {isSelected && (
+                                <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                  <Check className="w-2.5 h-2.5" />
+                                </div>
+                              )}
+
+                              {/* Delete Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeletePresetImage(e, img.id, img.name)}
+                                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-sm opacity-80 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                title={`"${img.name}" ছবিটি ডিফল্ট তালিকা থেকে মুছে ফেলুন`}
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Add Button Tile */}
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingPreset(true)}
+                          className="h-20 rounded-xl border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-emerald-700 transition-all cursor-pointer p-1 text-center"
+                          title="নতুন ডিফল্ট ছবি যোগ করুন"
+                        >
+                          <PlusCircle className="w-4 h-4 text-emerald-600" />
+                          <span className="text-[9px] font-bold">+ নতুন ছবি</span>
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder={lang === 'bn' ? 'নির্বাচিত কাভার ছবির সরাসরি লিংক বা URL' : 'Current image URL'}
+                          value={formData.coverImage}
+                          onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1596,31 +2006,44 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                         {/* Option 2: Choose from Metro Presets */}
                         <div>
-                          <span className="text-xs font-bold text-slate-700 block mb-1.5">
-                            {lang === 'bn' ? 'অথবা ১-ক্লিকে মেট্রোরেলের প্রস্তুত ছবি বেছে নিন:' : 'Or pick from metro presets (1-click):'}
-                          </span>
-                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                            {PRESET_IMAGE_OPTIONS.map((img, i) => (
-                              <button
-                                key={i}
-                                type="button"
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-bold text-slate-700">
+                              {lang === 'bn' ? 'অথবা প্রস্তুত ছবি লাইব্রেরি থেকে বেছে নিন:' : 'Or pick from preset images library:'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {presetImages.length} {lang === 'bn' ? 'টি ছবি' : 'images'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                            {presetImages.map((img) => (
+                              <div
+                                key={img.id}
                                 onClick={() => setQuickImageSelectedUrl(img.url)}
                                 className={`group relative h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                                   quickImageSelectedUrl === img.url
-                                    ? 'border-emerald-600 ring-2 ring-emerald-300'
+                                    ? 'border-emerald-600 ring-2 ring-emerald-300 shadow-xs'
                                     : 'border-slate-200 hover:border-slate-400'
                                 }`}
                               >
                                 <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                                <div className="absolute inset-x-0 bottom-0 bg-slate-900/70 p-0.5 text-[8px] text-white font-medium truncate text-center">
+                                <div className="absolute inset-x-0 bottom-0 bg-slate-900/75 p-0.5 text-[8px] text-white font-medium truncate text-center">
                                   {img.name}
                                 </div>
                                 {quickImageSelectedUrl === img.url && (
-                                  <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                  <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
                                     <Check className="w-2.5 h-2.5" />
                                   </div>
                                 )}
-                              </button>
+                                {/* Delete button for unwanted preset images */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeletePresetImage(e, img.id, img.name)}
+                                  className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                                  title="এই প্রস্তুত ছবি মুছে ফেলুন"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -2974,6 +3397,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Tab: Visitor Analytics & Google Analytics (GA4) */}
+              {adminTab === 'analytics' && (
+                <AdminAnalyticsDashboard lang={lang} />
               )}
 
               {/* Tab: Security & Password Management */}
